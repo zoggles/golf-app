@@ -18,9 +18,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <span className="brand-mark"><FlagPennant size={18} weight="fill" /></span>
           <span>Fairway Log</span>
         </Link>
-        <div className="local-pill" title="This release stores data in this browser">
+        <div className="local-pill" title="Your round history is stored in this browser">
           <WifiSlash size={14} />
-          <span>On-device</span>
+          <span>Local-first</span>
         </div>
       </header>
       <main>{children}</main>

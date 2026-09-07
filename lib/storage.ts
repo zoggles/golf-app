@@ -1,22 +1,29 @@
-import type { GolfData, GolfRound, RoundEvent, RoundSegment } from "./types";
+import type { Course, GolfData, GolfRound, RoundEvent, RoundSegment } from "./types";
 import { getCourse, getSegmentHoles } from "./courses";
 
 const STORAGE_KEY = "fairway-log:data:v1";
 const CHANGE_EVENT = "fairway-log:change";
 
 export const EMPTY_GOLF_DATA: GolfData = {
-  version: 1,
+  version: 2,
   activeRoundId: null,
   rounds: [],
+  courses: [],
 };
 
 let cachedRaw: string | null | undefined;
 let cachedData: GolfData = EMPTY_GOLF_DATA;
 
-function validData(value: unknown): value is GolfData {
-  if (!value || typeof value !== "object") return false;
+function normalizeData(value: unknown): GolfData | null {
+  if (!value || typeof value !== "object") return null;
   const data = value as Partial<GolfData>;
-  return data.version === 1 && Array.isArray(data.rounds);
+  if (!Array.isArray(data.rounds)) return null;
+  const courses = Array.isArray(data.courses) ? data.courses : [];
+  const rounds = data.rounds.map((round) => ({
+    ...round,
+    course: round.course ?? courses.find((course) => course.id === round.courseId) ?? getCourse(round.courseId),
+  }));
+  return { version: 2, activeRoundId: data.activeRoundId ?? null, rounds, courses };
 }
 
 export function readGolfData(): GolfData {
@@ -30,7 +37,7 @@ export function readGolfData(): GolfData {
   }
   try {
     const parsed: unknown = JSON.parse(raw);
-    cachedData = validData(parsed) ? parsed : EMPTY_GOLF_DATA;
+    cachedData = normalizeData(parsed) ?? EMPTY_GOLF_DATA;
   } catch {
     cachedData = EMPTY_GOLF_DATA;
   }
@@ -59,9 +66,14 @@ function createId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function startRound(courseId: string, segment: RoundSegment, startPhrase?: string): GolfRound {
+export function saveCourse(course: Course): void {
   const data = readGolfData();
-  const course = getCourse(courseId);
+  const courses = [course, ...data.courses.filter((item) => item.id !== course.id)];
+  writeGolfData({ ...data, courses });
+}
+
+export function startRound(course: Course, segment: RoundSegment, startPhrase?: string): GolfRound {
+  const data = readGolfData();
   const now = new Date().toISOString();
   const event: RoundEvent | null = startPhrase
     ? { id: createId("event"), at: now, source: "voice", text: startPhrase }
@@ -75,6 +87,7 @@ export function startRound(courseId: string, segment: RoundSegment, startPhrase?
     tee: course.tee,
     courseRating: course.rating,
     courseSlope: course.slope,
+    course,
     startedAt: now,
     status: "active",
     scores: {},
@@ -115,7 +128,7 @@ export function completeRound(roundId: string): void {
   const data = readGolfData();
   const target = data.rounds.find((round) => round.id === roundId);
   if (!target) return;
-  const requiredHoles = getSegmentHoles(getCourse(target.courseId), target.segment);
+  const requiredHoles = getSegmentHoles(target.course ?? getCourse(target.courseId), target.segment);
   if (requiredHoles.some((holeItem) => target.scores[holeItem.number] == null)) return;
   const rounds = data.rounds.map((round) =>
     round.id === roundId
@@ -135,6 +148,6 @@ export function discardActiveRound(roundId: string): void {
 }
 
 export function firstUnscoredHole(round: GolfRound): number | null {
-  const holes = getSegmentHoles(getCourse(round.courseId), round.segment);
+  const holes = getSegmentHoles(round.course ?? getCourse(round.courseId), round.segment);
   return holes.find((holeItem) => round.scores[holeItem.number] == null)?.number ?? null;
 }

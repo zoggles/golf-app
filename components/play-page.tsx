@@ -13,11 +13,11 @@ import {
   Sparkle,
   Trash,
 } from "@phosphor-icons/react";
-import { GENESEE_VALLEY_SOUTH, getCourse, getSegmentHoles, segmentLabel } from "@/lib/courses";
-import { completeRound, discardActiveRound, firstUnscoredHole, startRound, updateRoundScore } from "@/lib/storage";
+import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/courses";
+import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundScore } from "@/lib/storage";
 import { formatToPar, summarizeRound } from "@/lib/metrics";
-import { parseScoreCommand, parseStartCommand } from "@/lib/voice-parser";
-import type { RoundSegment } from "@/lib/types";
+import { parseScoreCommands, parseStartCommand } from "@/lib/voice-parser";
+import type { Course, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { VoiceControl } from "./voice-control";
 
@@ -28,25 +28,60 @@ export function PlayPage() {
 }
 
 function RoundStarter() {
+  const data = useGolfData();
   const [showSetup, setShowSetup] = useState(false);
   const [segment, setSegment] = useState<RoundSegment>("front9");
   const [phrase, setPhrase] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedCourse, setSelectedCourse] = useState<Course>(GENESEE_VALLEY_SOUTH);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [courseConfirmed, setCourseConfirmed] = useState(true);
 
-  function handleVoice(text: string) {
+  async function handleVoice(text: string) {
     const command = parseStartCommand(text);
     setPhrase(text);
     setSegment(command.segment);
-    setMessage(
-      command.understood
-        ? `Found ${GENESEE_VALLEY_SOUTH.shortName}. ${segmentLabel(command.segment)} is ready.`
-        : "I only know Genesee Valley South in this first release, so I’ve selected it for you.",
-    );
+    setLookupError(null);
+    const savedCourse = data.courses.find((course) => text.toLowerCase().includes(course.shortName.toLowerCase()));
+    if (command.courseId === GENESEE_VALLEY_SOUTH.id || savedCourse) {
+      const course = savedCourse ?? GENESEE_VALLEY_SOUTH;
+      setSelectedCourse(course);
+      setMessage(`Found ${course.shortName}. ${segmentLabel(command.segment)} is ready.`);
+      setCourseConfirmed(true);
+      return;
+    }
+    setCourseConfirmed(false);
+    setIsLookingUp(true);
+    setMessage("Searching current course and scorecard sources…");
+    try {
+      const response = await fetch("/api/courses/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: text }),
+      });
+      const result = (await response.json()) as { course?: Course; error?: string };
+      if (!response.ok || !result.course) throw new Error(result.error || "Course lookup failed.");
+      saveCourse(result.course);
+      setSelectedCourse(result.course);
+      setCourseConfirmed(true);
+      if (result.course.holes.length === 9) setSegment("front9");
+      setMessage(`Verified ${result.course.shortName} from its published scorecard.`);
+    } catch (cause) {
+      setMessage(null);
+      setLookupError(cause instanceof Error ? cause.message : "I couldn’t verify that course.");
+    } finally {
+      setIsLookingUp(false);
+    }
   }
 
   function beginRound() {
-    startRound(GENESEE_VALLEY_SOUTH.id, segment, phrase || undefined);
+    startRound(selectedCourse, segment, phrase || undefined);
   }
+
+  const visibleHoles = getSegmentHoles(selectedCourse, segment);
+  const segmentPar = visibleHoles.reduce((total, hole) => total + hole.par, 0);
+  const segmentYards = visibleHoles.reduce((total, hole) => total + hole.yards, 0);
 
   return (
     <>
@@ -76,18 +111,19 @@ function RoundStarter() {
             example='Try “Front 9 at Genesee Valley South”'
           />
           {message ? <div className="success-note"><Check size={17} weight="bold" />{message}</div> : null}
+          {lookupError ? <div className="voice-error">{lookupError}</div> : null}
           <div className="field-group">
             <label>Course</label>
             <div className="course-choice selected">
               <span className="course-icon"><FlagPennant size={21} weight="fill" /></span>
-              <span><strong>{GENESEE_VALLEY_SOUTH.shortName}</strong><small><MapPin size={13} /> Rochester, NY</small></span>
+              <span><strong>{selectedCourse.shortName}</strong><small><MapPin size={13} /> {selectedCourse.location}</small></span>
               <Check className="choice-check" size={19} weight="bold" />
             </div>
           </div>
           <div className="field-group">
             <label>Round</label>
             <div className="segment-control">
-              {(["front9", "back9", "full18"] as RoundSegment[]).map((option) => (
+              {(["front9", "back9", "full18"] as RoundSegment[]).filter((option) => selectedCourse.holes.length === 18 || option === "front9").map((option) => (
                 <button key={option} type="button" onClick={() => setSegment(option)} className={segment === option ? "selected" : ""}>
                   {segmentLabel(option)}
                 </button>
@@ -95,11 +131,11 @@ function RoundStarter() {
             </div>
           </div>
           <div className="course-facts">
-            <span><small>TEE</small>White</span>
-            <span><small>PAR</small>{segment === "full18" ? 67 : segment === "front9" ? 34 : 33}</span>
-            <span><small>YARDS</small>{segment === "full18" ? "5,230" : segment === "front9" ? "2,825" : "2,405"}</span>
+            <span><small>TEE</small>{selectedCourse.tee}</span>
+            <span><small>PAR</small>{segmentPar}</span>
+            <span><small>YARDS</small>{segmentYards.toLocaleString()}</span>
           </div>
-          <button className="primary-button full-width" type="button" onClick={beginRound}>
+          <button className="primary-button full-width" type="button" onClick={beginRound} disabled={isLookingUp || !courseConfirmed}>
             Begin {segmentLabel(segment)} <ArrowRight size={19} weight="bold" />
           </button>
         </section>
@@ -121,7 +157,7 @@ function RoundStarter() {
 function ActiveRound({ roundId }: { roundId: string }) {
   const data = useGolfData();
   const round = data.rounds.find((item) => item.id === roundId);
-  const course = getCourse(round?.courseId ?? GENESEE_VALLEY_SOUTH.id);
+  const course = round?.course ?? GENESEE_VALLEY_SOUTH;
   const holes = useMemo(() => (round ? getSegmentHoles(course, round.segment) : []), [course, round]);
   const initialHole = round ? firstUnscoredHole(round) ?? holes[0]?.number ?? 1 : 1;
   const [selectedHole, setSelectedHole] = useState(initialHole);
@@ -150,13 +186,38 @@ function ActiveRound({ roundId }: { roundId: string }) {
     if (nextHole) selectHole(nextHole.number);
   }
 
-  function handleVoice(text: string) {
-    const command = parseScoreCommand(text, round!.courseId, selectedHole);
-    if (!command) {
-      setFeedback("I didn’t catch a hole and score. Try “Hole 3, 5 strokes.”");
-      return;
+  async function handleVoice(text: string) {
+    setFeedback("Understanding your update…");
+    try {
+      const response = await fetch("/api/round-command", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          currentHole: selectedHole,
+          holes: holes.map((hole) => ({ number: hole.number, par: hole.par })),
+          scores: round!.scores,
+        }),
+      });
+      const result = (await response.json()) as { updates?: Array<{ hole: number; strokes: number }>; reply?: string; error?: string };
+      if (!response.ok) throw new Error(result.error || "I couldn’t understand that update.");
+      const updates = (result.updates ?? []).filter((update) => holes.some((hole) => hole.number === update.hole));
+      if (!updates.length) {
+        setFeedback(result.reply || "Which hole and score should I update?");
+        return;
+      }
+      for (const update of updates) updateRoundScore(round!.id, update.hole, update.strokes, "voice", text);
+      const last = updates[updates.length - 1];
+      selectHole(last.hole);
+      setFeedback(result.reply || `Updated ${updates.length} ${updates.length === 1 ? "hole" : "holes"}.`);
+    } catch (cause) {
+      const fallback = parseScoreCommands(text, course, selectedHole).filter((update) => holes.some((hole) => hole.number === update.hole));
+      if (fallback.length) {
+        for (const update of fallback) updateRoundScore(round!.id, update.hole, update.strokes, "voice", text);
+        selectHole(fallback[fallback.length - 1].hole);
+        setFeedback(`Updated ${fallback.map((update) => `hole ${update.hole} to ${update.strokes}`).join(" and ")}.`);
+      } else setFeedback(cause instanceof Error ? cause.message : "I couldn’t understand that update.");
     }
-    applyScore(command.hole, command.strokes, "voice", text);
   }
 
   function moveHole(direction: -1 | 1) {
@@ -209,7 +270,7 @@ function ActiveRound({ roundId }: { roundId: string }) {
 
       <section className="voice-score-card surface-card">
         <div className="section-heading tight"><div><p className="eyebrow">HANDS-FREE UPDATE</p><h2>Tell me your score</h2></div></div>
-        <VoiceControl onSubmit={handleVoice} placeholder="e.g. Hole 3, 5 strokes" example='Say “Hole 3, 5 strokes”' compact />
+        <VoiceControl onSubmit={handleVoice} placeholder="e.g. Change hole 3 to 5 strokes" example='Try “Change hole 3 to 5, and hole 4 was a bogey”' compact />
         <div className="feedback-line"><Sparkle size={15} weight="fill" /> {feedback}</div>
       </section>
 

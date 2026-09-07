@@ -13,7 +13,7 @@ export interface RoundSummary {
 }
 
 export function summarizeRound(round: GolfRound): RoundSummary {
-  const course = getCourse(round.courseId);
+  const course = round.course ?? getCourse(round.courseId);
   const holes = getSegmentHoles(course, round.segment);
   const scored = holes.filter((hole) => round.scores[hole.number] != null);
   const total = scored.reduce((sum, hole) => sum + round.scores[hole.number], 0);
@@ -41,10 +41,10 @@ export function estimateHandicap(rounds: GolfRound[]): number | null {
     .map((round) => {
       const summary = summarizeRound(round);
       if (summary.holesPlayed < 9) return null;
-      const course = getCourse(round.courseId);
+      const course = round.course ?? getCourse(round.courseId);
       const scale = summary.holesPlayed === 9 ? 2 : 1;
       const adjustedScore = summary.total * scale;
-      const adjustedRating = course.rating;
+      const adjustedRating = course.holes.length === 9 ? course.rating * 2 : course.rating;
       return ((adjustedScore - adjustedRating) * 113) / round.courseSlope;
     })
     .filter((value): value is number => value != null)

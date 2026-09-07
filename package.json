@@ -11,10 +11,13 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^4.0.75",
     "@phosphor-icons/react": "latest",
+    "ai": "^7.0.93",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/node": "latest",

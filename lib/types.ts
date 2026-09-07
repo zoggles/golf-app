@@ -42,6 +42,7 @@ export interface GolfRound {
   tee: string;
   courseRating: number;
   courseSlope: number;
+  course: Course;
   startedAt: string;
   completedAt?: string;
   status: RoundStatus;
@@ -50,7 +51,8 @@ export interface GolfRound {
 }
 
 export interface GolfData {
-  version: 1;
+  version: 2;
   activeRoundId: string | null;
   rounds: GolfRound[];
+  courses: Course[];
 }
