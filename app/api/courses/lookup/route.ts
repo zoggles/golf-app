@@ -93,13 +93,11 @@ export async function POST(request: Request) {
       toolChoice: { type: "tool", toolName: "web_search" },
     });
 
-    const evidence = research.steps.flatMap((step) => [
-      ...step.toolResults.map((result) => ({
-        type: "search_result",
-        toolName: result.toolName,
-        output: result.output,
-      })),
-    ]);
+    const evidence = research.toolResults.map((result) => ({
+      type: "search_result",
+      toolName: result.toolName,
+      output: result.output,
+    }));
     if (evidence.length === 0) failCourseLookup("NoSearchEvidenceError", "Course research returned no usable evidence.");
 
     const evidenceJson = JSON.stringify(evidence).slice(0, 60000);
