@@ -1,4 +1,4 @@
-import { generateText, gateway, isStepCount } from "ai";
+import { generateText, gateway } from "ai";
 import { z } from "zod";
 import { parseAiJson } from "@/lib/parse-ai-json";
 
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
           searchLanguageFilter: ["en"],
         }),
       },
-      stopWhen: isStepCount(5),
+      toolChoice: { type: "tool", toolName: "web_search" },
     });
 
     const evidence = research.steps.flatMap((step) => [
