@@ -82,6 +82,7 @@ export async function POST(request: Request) {
       tools: {
         google_search: google.tools.googleSearch({}),
       },
+      toolChoice: { type: "tool", toolName: "google_search" },
     });
 
     const structuredCourse = parseCourseCandidates([
