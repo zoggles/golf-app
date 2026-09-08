@@ -3,16 +3,16 @@ import type { Course } from "./types";
 export const COMMON_TEES = ["Forward", "Red", "Gold", "White", "Blue", "Black"];
 
 const TEE_CONTEXT: Record<string, string> = {
-  forward: "shortest option; less total distance and shorter approaches",
-  red: "often a forward or shorter option",
-  gold: "often a shorter or middle option; sometimes called senior tees, but varies by course",
-  yellow: "often a forward or middle option",
-  white: "often a middle-distance option",
-  blue: "often a longer or back option",
-  black: "often the longest or championship option",
-  green: "meaning varies by course",
-  silver: "meaning varies by course",
-  orange: "often a forward or shorter option",
+  forward: "New golfers",
+  red: "Women",
+  gold: "Seniors",
+  yellow: "Juniors",
+  white: "Men",
+  blue: "Advanced",
+  black: "Expert",
+  green: "Course-specific",
+  silver: "Course-specific",
+  orange: "Juniors",
 };
 
 export function normalizeTee(value: string) {
@@ -20,7 +20,7 @@ export function normalizeTee(value: string) {
 }
 
 export function teeDescription(tee: string) {
-  return TEE_CONTEXT[normalizeTee(tee)] ?? "a course-specific tee; compare its total yardage, rating, and slope";
+  return TEE_CONTEXT[normalizeTee(tee)] ?? "Course-specific";
 }
 
 export function teeOptionLabel(tee: string) {

@@ -1,5 +1,5 @@
 import { getCourse, getSegmentHoles, segmentLabel } from "./courses";
-import type { GolfRound } from "./types";
+import type { Course, GolfRound, Hole, RoundSegment } from "./types";
 
 export interface RoundSummary {
   id: string;
@@ -55,6 +55,24 @@ export function estimateHandicap(rounds: GolfRound[]): number | null {
   const best = completed.slice(0, count);
   const average = best.reduce((sum, value) => sum + value, 0) / best.length;
   return Math.max(0, Math.round(average * 10) / 10);
+}
+
+export function estimateRoundHandicap(handicapIndex: number | null, course: Course, segment: RoundSegment): number | null {
+  if (handicapIndex == null) return null;
+  const holes = getSegmentHoles(course, segment);
+  const segmentPar = holes.reduce((sum, hole) => sum + hole.par, 0);
+  const isNineHoleRound = holes.length === 9;
+  const indexForRound = isNineHoleRound ? handicapIndex / 2 : handicapIndex;
+  const ratingForRound = isNineHoleRound && course.holes.length === 18 ? course.rating / 2 : course.rating;
+  return Math.max(0, Math.round(indexForRound * (course.slope / 113) + (ratingForRound - segmentPar)));
+}
+
+export function handicapStrokesForHole(roundHandicap: number | null, hole: Hole, roundHoles: Hole[]): number {
+  if (roundHandicap == null || roundHandicap <= 0 || !roundHoles.length) return 0;
+  const ranked = [...roundHoles].sort((left, right) => left.handicap - right.handicap);
+  const rank = ranked.findIndex((candidate) => candidate.number === hole.number);
+  if (rank < 0) return 0;
+  return Math.floor(roundHandicap / roundHoles.length) + (rank < roundHandicap % roundHoles.length ? 1 : 0);
 }
 
 export function scoringAverage(rounds: GolfRound[]): number | null {

@@ -16,10 +16,10 @@ describe("extractTeeMention", () => {
     expect(extractTeeMention("Front nine at Blue Heron Golf Club")).toBeNull();
   });
 
-  it("explains common tee colors without treating them as gender rules", () => {
-    expect(teeDescription("Red")).toContain("forward or shorter");
-    expect(teeDescription("Gold")).toContain("varies");
-    expect(teeOptionLabel("Blue")).toBe("Blue — often a longer or back option");
+  it("gives each common tee a compact player guide", () => {
+    expect(teeDescription("Red")).toBe("Women");
+    expect(teeDescription("Gold")).toBe("Seniors");
+    expect(teeOptionLabel("Blue")).toBe("Blue — Advanced");
   });
 
   it("matches small speech-to-text and spelling differences in saved course names", () => {

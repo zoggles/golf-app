@@ -15,9 +15,9 @@ import {
 } from "@phosphor-icons/react";
 import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/courses";
 import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundScore } from "@/lib/storage";
-import { formatToPar, summarizeRound } from "@/lib/metrics";
+import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, summarizeRound } from "@/lib/metrics";
 import { nextHoleAfterVoiceUpdates, parseScoreCommands, parseStartCommand, type ScoreCommand } from "@/lib/voice-parser";
-import { COMMON_TEES, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeDescription, teeOptionLabel } from "@/lib/tee-selection";
+import { COMMON_TEES, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeOptionLabel } from "@/lib/tee-selection";
 import type { Course, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { VoiceControl } from "./voice-control";
@@ -206,14 +206,7 @@ function RoundStarter() {
           >
             {teeOptions.map((tee) => <option key={tee} value={tee}>{teeOptionLabel(tee)}</option>)}
           </select>
-          <div className="tee-context">
-            <strong>{teeChoice} tees</strong>
-            <span>{teeDescription(teeChoice)}.</span>
-            {normalizeTee(teeChoice) === normalizeTee(selectedCourse.tee) ? (
-              <small>{selectedCourse.yards.toLocaleString()} yards · {selectedCourse.rating} rating · {selectedCourse.slope} slope</small>
-            ) : null}
-          </div>
-          <small className="field-help">Tee colors are not standardized or restricted by gender. Use the verified yardage, rating, and slope to choose what fits your game. Changing tees refreshes every hole and club suggestion.</small>
+          <small className="field-help">Quick guide only—course conventions vary. Changing tees refreshes every hole and club suggestion.</small>
         </div>
         <div className="field-group">
           <label>Holes</label>
@@ -255,6 +248,9 @@ function ActiveRound({ roundId }: { roundId: string }) {
 
   if (!round) return null;
   const summary = summarizeRound(round);
+  const handicapIndex = estimateHandicap(data.rounds);
+  const roundHandicap = estimateRoundHandicap(handicapIndex, course, round.segment);
+  const currentHoleStrokes = handicapStrokesForHole(roundHandicap, currentHole, holes);
   const completedHoles = Object.keys(round.scores).length;
   const allHolesScored = completedHoles === holes.length;
 
@@ -338,7 +334,7 @@ function ActiveRound({ roundId }: { roundId: string }) {
         <div>
           <p className="eyebrow"><span className="live-dot" /> ROUND IN PROGRESS</p>
           <h1>{course.shortName}</h1>
-          <p><MapPin size={14} /> {course.location} · {segmentLabel(round.segment)} · {round.tee} tees</p>
+          <p><MapPin size={14} /> {course.location} · {segmentLabel(round.segment)} · {round.tee} tees · Round HCP {roundHandicap ?? "—"}</p>
         </div>
         <div className="round-total"><small>THRU</small><strong>{completedHoles}</strong><span>{formatToPar(summary.toPar)}</span></div>
       </section>
@@ -352,8 +348,9 @@ function ActiveRound({ roundId }: { roundId: string }) {
         <div className="hole-stats">
           <div><small>PAR</small><strong>{currentHole.par}</strong></div>
           <div><small>{round.tee.toUpperCase()}</small><strong>{currentHole.yards}</strong><span>YDS</span></div>
-          <div><small>HDCP</small><strong>{currentHole.handicap}</strong></div>
+          <div><small>HOLE HCP</small><strong>{currentHole.handicap}</strong><span>{currentHoleStrokes ? `YOU GET +${currentHoleStrokes}` : "NO STROKE"}</span></div>
         </div>
+        <p className="handicap-help">Hole HCP ranks difficulty: 1 is hardest, 18 is easiest. “You get +1” marks a handicap stroke for this round.</p>
         <div className="club-callout">
           <div><small>SUGGESTED OFF THE TEE</small><strong>{currentHole.suggestedClub}</strong></div>
           <p>{currentHole.strategy}</p>
@@ -383,7 +380,8 @@ function ActiveRound({ roundId }: { roundId: string }) {
               <button key={holeItem.number} type="button" onClick={() => selectHole(holeItem.number)} className={selectedHole === holeItem.number ? "hole-cell selected" : "hole-cell"}>
                 <span>{holeItem.number}</span>
                 <strong>{score ?? "—"}</strong>
-                <small>PAR {holeItem.par}</small>
+                <small>PAR {holeItem.par} · HCP {holeItem.handicap}</small>
+                {handicapStrokesForHole(roundHandicap, holeItem, holes) ? <small className="hole-stroke">+{handicapStrokesForHole(roundHandicap, holeItem, holes)} stroke</small> : null}
               </button>
             );
           })}

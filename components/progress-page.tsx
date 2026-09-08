@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { ArrowRight, CaretRight, FlagPennant, Gauge, Medal, TrendUp } from "@phosphor-icons/react";
 import { useGolfData } from "@/hooks/use-golf-data";
-import { estimateHandicap, formatToPar, scoringAverage, summarizeRound } from "@/lib/metrics";
+import { estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound } from "@/lib/metrics";
 
 export function ProgressPage() {
   const data = useGolfData();
   const completed = data.rounds.filter((round) => round.status === "completed");
   const summaries = completed.map(summarizeRound).filter((round) => round.holesPlayed > 0);
   const handicap = estimateHandicap(completed);
+  const roundsById = new Map(completed.map((round) => [round.id, round]));
   const average = scoringAverage(completed);
   const best = [...summaries].sort((a, b) => a.toPar - b.toPar)[0];
   const averageToPar = summaries.length
@@ -33,8 +34,8 @@ export function ProgressPage() {
       ) : (
         <>
           <section className="handicap-card surface-card">
-            <div><p className="eyebrow">ESTIMATED INDEX</p><strong>{handicap?.toFixed(1) ?? "—"}</strong><span>INFORMAL ESTIMATE</span></div>
-            <div className="handicap-copy"><TrendUp size={25} weight="bold" /><p>Based on the best differentials from your saved rounds.</p></div>
+            <div><p className="eyebrow">ESTIMATED HANDICAP INDEX</p><strong>{handicap?.toFixed(1) ?? "—"}</strong><span>INFORMAL ESTIMATE</span></div>
+            <div className="handicap-copy"><TrendUp size={25} weight="bold" /><p>Your overall ability estimate. Each saved round also shows a tee-adjusted round handicap.</p></div>
           </section>
 
           <section className="metric-grid">
@@ -72,14 +73,18 @@ export function ProgressPage() {
           <section className="history-section">
             <div className="section-heading"><div><h2>Round log</h2></div></div>
             <div className="round-list">
-              {summaries.map((round) => (
-                <Link key={round.id} href={`/rounds/${round.id}`} className="round-list-item" aria-label={`Open ${round.courseName} round from ${new Date(round.date).toLocaleDateString()}`}>
-                  <span className="round-date"><strong>{new Date(round.date).getDate()}</strong><small>{new Date(round.date).toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</small></span>
-                  <span className="round-info"><strong>{round.courseName}</strong><small>{round.segment} · {round.holesPlayed} holes</small></span>
-                  <span className="round-score"><strong>{round.total}</strong><small>{formatToPar(round.toPar)}</small></span>
-                  <CaretRight className="round-open-icon" size={18} />
-                </Link>
-              ))}
+              {summaries.map((round) => {
+                const savedRound = roundsById.get(round.id);
+                const roundHandicap = savedRound ? estimateRoundHandicap(handicap, savedRound.course, savedRound.segment) : null;
+                return (
+                  <Link key={round.id} href={`/rounds/${round.id}`} className="round-list-item" aria-label={`Open ${round.courseName} round from ${new Date(round.date).toLocaleDateString()}`}>
+                    <span className="round-date"><strong>{new Date(round.date).getDate()}</strong><small>{new Date(round.date).toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</small></span>
+                    <span className="round-info"><strong>{round.courseName}</strong><small>{round.segment} · {round.holesPlayed} holes · Round HCP {roundHandicap ?? "—"}</small></span>
+                    <span className="round-score"><strong>{round.total}</strong><small>{formatToPar(round.toPar)}</small></span>
+                    <CaretRight className="round-open-icon" size={18} />
+                  </Link>
+                );
+              })}
             </div>
           </section>
         </>

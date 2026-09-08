@@ -14,7 +14,7 @@ const holeSchema = z.object({
 });
 
 const courseSchema = z.object({
-  id: z.string().regex(/^[a-z0-9-]+$/),
+  id: z.string().min(3).describe("Stable identifier based on the course and tee; the server will normalize it"),
   name: z.string().min(3).describe("Exact published course name, correcting phonetic or spelling errors in the request"),
   shortName: z.string().min(3).describe("Concise recognizable course name"),
   location: z.string().min(2).describe("Published city and state/province"),
@@ -35,7 +35,30 @@ function failCourseLookup(name: string, message: string): never {
   throw error;
 }
 
-function normalizeCourse(course: Course): Course {
+function slugify(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+type GroundedSource = { sourceType: string; url?: string; title?: string };
+
+function bestGroundedSource(course: Course, sources: GroundedSource[]) {
+  const ignored = new Set(["the", "golf", "course", "club", "country", "of", "at"]);
+  const terms = slugify(course.name).split("-").filter((term) => term.length > 3 && !ignored.has(term));
+  const urlSources = sources.filter((source): source is GroundedSource & { url: string } =>
+    source.sourceType === "url" && typeof source.url === "string",
+  );
+  const ranked = urlSources.map((source) => {
+    const haystack = `${source.title ?? ""} ${source.url}`.toLowerCase();
+    const nameMatches = terms.filter((term) => haystack.includes(term)).length;
+    const scorecardMatch = /scorecard|course/.test(haystack) ? 2 : 0;
+    return { url: source.url, score: nameMatches * 10 + scorecardMatch };
+  }).sort((left, right) => right.score - left.score);
+
+  if (ranked[0]?.score) return ranked[0].url;
+  return urlSources.some((source) => source.url === course.sourceUrl) ? course.sourceUrl : urlSources[0]?.url ?? course.sourceUrl;
+}
+
+function normalizeCourse(course: Course, sources: GroundedSource[]): Course {
   const holes = [...course.holes].sort((left, right) => left.number - right.number);
   const validLength = holes.length === 9 || holes.length === 18;
   const sequential = holes.every((hole, index) => hole.number === index + 1);
@@ -45,8 +68,10 @@ function normalizeCourse(course: Course): Course {
 
   return {
     ...course,
+    id: slugify(`${course.name}-${course.tee}`),
     par: holes.reduce((total, hole) => total + hole.par, 0),
     yards: holes.reduce((total, hole) => total + hole.yards, 0),
+    sourceUrl: bestGroundedSource(course, sources),
     holes,
   };
 }
@@ -90,7 +115,7 @@ export async function POST(request: Request) {
     const structuredCourse = structured.output;
     if (!structuredCourse) failCourseLookup("CourseStructureError", "Course research could not be converted to a complete scorecard.");
 
-    const normalizedCourse = normalizeCourse(structuredCourse);
+    const normalizedCourse = normalizeCourse(structuredCourse, research.sources);
     return Response.json({ course: normalizedCourse });
   } catch (error) {
     console.error("Course lookup failed", error);

@@ -94,10 +94,6 @@ a { color: inherit; text-decoration: none; }
 .course-select:focus { border-color: rgba(173,240,95,.55); outline: 2px solid rgba(173,240,95,.12); outline-offset: 2px; }
 .course-select:disabled { opacity: .55; cursor: wait; }
 .field-help { display: block; margin-top: 7px; color: var(--faint); font-size: 10px; line-height: 1.45; }
-.tee-context { display: grid; gap: 3px; margin-top: 9px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.025); }
-.tee-context strong { color: var(--ink); font-size: 12px; }
-.tee-context span { color: var(--muted); font-size: 11px; line-height: 1.4; }
-.tee-context small { color: var(--accent); font-size: 10px; letter-spacing: .02em; }
 .course-summary { margin-top: 12px; }
 .course-choice { border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; }
 .course-choice.selected { border-color: rgba(173,240,95,.4); background: rgba(173,240,95,.045); }
@@ -133,6 +129,7 @@ a { color: inherit; text-decoration: none; }
 .hole-stats strong { font-size: clamp(45px, 10vw, 66px); line-height: 1; margin: 5px 0; letter-spacing: -.06em; }
 .hole-stats > div:nth-child(2) strong { color: var(--green); }
 .hole-stats span { color: var(--muted); font-size: 10px; }
+.handicap-help { margin: -18px 0 24px; color: var(--faint); font-size: 10px; line-height: 1.45; text-align: center; }
 .club-callout { display: grid; grid-template-columns: minmax(150px, .7fr) 1fr; gap: 22px; padding: 18px; border-radius: 14px; background: rgba(0,0,0,.19); margin-bottom: 22px; }
 .club-callout div { display: flex; flex-direction: column; gap: 5px; }
 .club-callout small { color: var(--faint); font-size: 9px; letter-spacing: .14em; }
@@ -152,6 +149,7 @@ a { color: inherit; text-decoration: none; }
 .hole-cell:last-child { border-right: 0; }
 .hole-cell.selected { background: rgba(173,240,95,.12); }
 .hole-cell span, .hole-cell small { color: var(--faint); font-size: 9px; }
+.hole-cell .hole-stroke { color: var(--green); }
 .hole-cell strong { font-size: 19px; }
 .round-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 24px; }
 .completion-note { margin: 10px 0 0; color: var(--faint); font-size: 11px; text-align: right; }
@@ -214,7 +212,8 @@ a { color: inherit; text-decoration: none; }
 .round-detail-total strong { font-size: 42px; line-height: 1; }
 .round-detail-total span { color: var(--green); font-size: 18px; padding-bottom: 3px; }
 .round-editor { overflow: hidden; }
-.round-editor-heading, .round-editor-row { display: grid; grid-template-columns: 70px 1fr 1fr 160px; align-items: center; gap: 12px; padding: 12px 22px; }
+.round-handicap-help { margin: 0; padding: 12px 22px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 10px; }
+.round-editor-heading, .round-editor-row { display: grid; grid-template-columns: 62px .7fr .9fr 1fr 160px; align-items: center; gap: 12px; padding: 12px 22px; }
 .round-editor-heading { background: rgba(0,0,0,.18); color: var(--faint); font-size: 9px; letter-spacing: .14em; }
 .round-editor-heading span:last-child { text-align: center; }
 .round-editor-row { min-height: 66px; border-top: 1px solid var(--line); }
@@ -252,7 +251,7 @@ a { color: inherit; text-decoration: none; }
   .metric-grid { grid-template-columns: 1fr 1fr; }
   .handicap-card { grid-template-columns: 1fr; }
   .handicap-copy { border-left: 0; border-top: 1px solid var(--line); padding: 20px 0 0; }
-  .round-editor-heading, .round-editor-row { grid-template-columns: 42px 50px 1fr 126px; padding: 10px 14px; gap: 8px; }
+  .round-editor-heading, .round-editor-row { grid-template-columns: 36px 34px 54px 1fr 110px; padding: 10px 12px; gap: 8px; }
   .round-detail-header { align-items: center; }
 }
 
