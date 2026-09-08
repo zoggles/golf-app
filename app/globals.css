@@ -257,6 +257,37 @@ a { color: inherit; text-decoration: none; }
 .scan-note { color: var(--faint); }
 .scan-warning > svg, .scan-note > svg { flex-shrink: 0; margin-top: 2px; }
 
+.golfer-switcher { position: relative; }
+.golfer-button { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 0 12px 0 5px; border: 1px solid var(--line); border-radius: 999px; background: transparent; cursor: pointer; }
+.golfer-button:hover { border-color: rgba(173,240,95,.35); }
+.golfer-button > svg { color: var(--faint); }
+.golfer-name { font-size: 13px; font-weight: 650; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.golfer-initials { width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: rgba(173,240,95,.14); color: var(--green); display: grid; place-items: center; font-size: 12px; font-weight: 750; letter-spacing: .02em; }
+.golfer-panel { position: absolute; top: calc(100% + 9px); right: 0; z-index: 40; width: min(300px, calc(100vw - 34px)); padding: 18px; border-radius: 18px; background: linear-gradient(145deg, #16271c, #0d1912); box-shadow: 0 22px 60px rgba(0,0,0,.55); }
+.golfer-panel .eyebrow { margin-bottom: 12px; }
+.golfer-list { display: flex; flex-direction: column; gap: 6px; }
+.golfer-option { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 50px; padding: 0 12px; border: 1px solid transparent; border-radius: 13px; background: rgba(0,0,0,.18); cursor: pointer; text-align: left; }
+.golfer-option:hover { border-color: var(--line); }
+.golfer-option.selected { border-color: rgba(173,240,95,.4); background: rgba(173,240,95,.06); }
+.golfer-option strong { min-width: 0; flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.golfer-option > svg { color: var(--green); }
+.golfer-secondary-action { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+.golfer-secondary-action:hover { color: var(--ink); }
+.golfer-form { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.golfer-form > label { display: block; margin-bottom: 9px; color: var(--muted); font-size: 12px; }
+.golfer-entry { display: flex; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: rgba(0,0,0,.18); }
+.golfer-entry input { min-width: 0; flex: 1; padding: 11px 13px; border: 0; background: transparent; color: var(--ink); outline: none; }
+.golfer-entry input::placeholder { color: #68756c; }
+.golfer-entry button { width: 46px; border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--green); cursor: pointer; }
+.golfer-entry button:disabled { color: var(--faint); cursor: not-allowed; }
+.golfer-loading { margin: 0 0 4px; color: var(--faint); font-size: 12px; }
+.golfer-gate { max-width: 470px; margin: 0 auto; padding: 38px 28px 30px; text-align: center; }
+.golfer-gate .empty-mark { margin: 0 auto 22px; }
+.golfer-gate h1 { margin: 0 0 10px; font-size: 32px; letter-spacing: -.045em; }
+.golfer-gate > p { margin: 0 0 26px; color: var(--muted); line-height: 1.55; }
+.golfer-gate .golfer-form { text-align: left; }
+.golfer-gate .golfer-option { text-align: left; }
+
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(173,240,95,.32); } 50% { box-shadow: 0 0 0 12px rgba(173,240,95,0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -278,11 +309,13 @@ a { color: inherit; text-decoration: none; }
   .round-editor-heading, .round-editor-row { grid-template-columns: 36px 34px 54px 1fr 110px; padding: 10px 12px; gap: 8px; }
   .round-detail-header { align-items: center; }
   .progress-title-row { flex-wrap: wrap; gap: 16px; }
+  .golfer-gate { padding: 30px 20px 24px; }
   .scan-summary { flex-direction: column; align-items: flex-start; gap: 14px; }
 }
 
 @media (max-width: 420px) {
   .local-pill span { display: none; }
+  .golfer-name { max-width: 74px; }
   .segment-control button { font-size: 12px; }
   .hole-stats strong { font-size: 45px; }
   .voice-control { grid-template-columns: 56px 1fr; }

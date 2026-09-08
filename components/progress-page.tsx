@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { ArrowRight, CaretRight, FileArrowDown, FlagPennant, Gauge, Medal, TrendUp } from "@phosphor-icons/react";
 import { useGolfData } from "@/hooks/use-golf-data";
+import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { buildHistoryCsv, historyExportFilename } from "@/lib/history-export";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound } from "@/lib/metrics";
 import type { GolfRound } from "@/lib/types";
 
 export function ProgressPage() {
   const data = useGolfData();
+  const golferName = useSelectedGolfer()?.name ?? "Golfer";
   const completed = data.rounds.filter((round) => round.status === "completed");
   const summaries = completed.map(summarizeRound).filter((round) => round.holesPlayed > 0);
   const handicap = estimateHandicap(completed);
@@ -25,7 +27,7 @@ export function ProgressPage() {
       <section className="progress-hero">
         <div className="progress-title-row">
           <div><h1>Progress</h1><p>{completed.length} completed {completed.length === 1 ? "round" : "rounds"}</p></div>
-          <ExportHistoryButton rounds={data.rounds} />
+          <ExportHistoryButton rounds={data.rounds} golferName={golferName} />
         </div>
       </section>
 
@@ -104,15 +106,15 @@ export function ProgressPage() {
  * built in the browser from the same mirror the page is reading, so it works on
  * the course with no signal.
  */
-function ExportHistoryButton({ rounds }: { rounds: GolfRound[] }) {
+function ExportHistoryButton({ rounds, golferName }: { rounds: GolfRound[]; golferName: string }) {
   function download() {
     // The byte order mark is what makes Excel read the file as UTF-8, so course
     // names keep their dashes and accents.
-    const blob = new Blob(["\uFEFF", buildHistoryCsv(rounds)], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\uFEFF", buildHistoryCsv(rounds, golferName)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = historyExportFilename(new Date());
+    link.download = historyExportFilename(golferName, new Date());
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -123,7 +125,7 @@ function ExportHistoryButton({ rounds }: { rounds: GolfRound[] }) {
       type="button"
       onClick={download}
       disabled={rounds.length === 0}
-      title="Download every round as a CSV spreadsheet, one row per hole"
+      title={`Download every round ${golferName} has logged as a CSV spreadsheet, one row per hole`}
     >
       <FileArrowDown size={18} /> Export round history
     </button>

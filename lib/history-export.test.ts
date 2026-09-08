@@ -23,6 +23,8 @@ function course(overrides: Partial<Course> = {}): Course {
   };
 }
 
+const GOLFER = "Nell Ray";
+
 function round(overrides: Partial<GolfRound> = {}): GolfRound {
   const base = course();
   return {
@@ -50,21 +52,24 @@ function rows(csv: string): string[] {
 
 describe("buildHistoryCsv", () => {
   it("writes one row per hole with the round repeated on each row", () => {
-    const lines = rows(buildHistoryCsv([round()]));
+    const lines = rows(buildHistoryCsv([round()], GOLFER));
 
     expect(lines).toHaveLength(4);
     expect(lines[0].split(",")).toContain("stroke_index");
     expect(lines[1]).toBe(
-      "2026-05-30,2026-05-30T17:30:00.000Z,completed,Test Links,\"Rochester, NY\",White,Full 18,65.2,109,1,4,300,5,5,1,,,14,12,2,,3,round-1",
+      "Nell Ray,2026-05-30,2026-05-30T17:30:00.000Z,completed,Test Links,\"Rochester, NY\",White,Full 18,65.2,109,1,4,300,5,5,1,,,14,12,2,,3,round-1",
     );
     expect(lines[3]).toContain(",3,5,450,1,6,1,");
   });
 
   it("orders rounds oldest first so the file reads as a history", () => {
-    const csv = buildHistoryCsv([
-      round({ id: "newer", completedAt: "2026-06-02T12:00:00.000Z" }),
-      round({ id: "older", completedAt: "2026-04-01T12:00:00.000Z" }),
-    ]);
+    const csv = buildHistoryCsv(
+      [
+        round({ id: "newer", completedAt: "2026-06-02T12:00:00.000Z" }),
+        round({ id: "older", completedAt: "2026-04-01T12:00:00.000Z" }),
+      ],
+      GOLFER,
+    );
 
     const ids = rows(csv)
       .slice(1)
@@ -73,15 +78,15 @@ describe("buildHistoryCsv", () => {
   });
 
   it("leaves an unplayed hole blank and totals only what was scored", () => {
-    const lines = rows(buildHistoryCsv([round({ status: "active", completedAt: undefined, scores: { 1: 5, 2: 3 } })]));
+    const lines = rows(buildHistoryCsv([round({ status: "active", completedAt: undefined, scores: { 1: 5, 2: 3 } })], GOLFER));
 
     // Hole 3 has no score, no differential, and does not reach the round totals.
-    expect(lines[3]).toBe("2026-05-30,2026-05-30T14:00:00.000Z,active,Test Links,\"Rochester, NY\",White,Full 18,65.2,109,3,5,450,1,,,,,8,7,1,,2,round-1");
+    expect(lines[3]).toBe("Nell Ray,2026-05-30,2026-05-30T14:00:00.000Z,active,Test Links,\"Rochester, NY\",White,Full 18,65.2,109,3,5,450,1,,,,,8,7,1,,2,round-1");
   });
 
   it("keeps a spreadsheet from reading a course name as a formula or a new column", () => {
     const named = course({ name: '=SUM(A1) "Old" Course, Ltd' });
-    const line = rows(buildHistoryCsv([round({ course: named, courseName: named.name })]))[1];
+    const line = rows(buildHistoryCsv([round({ course: named, courseName: named.name })], GOLFER))[1];
 
     expect(line).toContain('"\'=SUM(A1) ""Old"" Course, Ltd"');
   });
@@ -99,7 +104,7 @@ describe("buildHistoryCsv", () => {
       })),
     });
     const scores = Object.fromEntries(Array.from({ length: 9 }, (_, index) => [index + 1, 6]));
-    const csv = buildHistoryCsv([round({ course: nine, segment: "front9", scores })]);
+    const csv = buildHistoryCsv([round({ course: nine, segment: "front9", scores })], GOLFER);
     const columns = rows(csv)[0].split(",");
     const cells = rows(csv)
       .slice(1)
@@ -127,17 +132,21 @@ describe("buildHistoryCsv", () => {
         strategy: "",
       })),
     });
-    const csv = buildHistoryCsv([round({ course: eighteen, segment: "back9", scores: { 10: 4 } })]);
+    const csv = buildHistoryCsv([round({ course: eighteen, segment: "back9", scores: { 10: 4 } })], GOLFER);
 
     expect(rows(csv)).toHaveLength(10);
     expect(rows(csv)[1]).toBe(
-      "2026-05-30,2026-05-30T17:30:00.000Z,completed,Test Links,\"Rochester, NY\",White,Back 9,65.2,109,10,4,300,10,4,0,,,4,4,0,,1,round-1",
+      "Nell Ray,2026-05-30,2026-05-30T17:30:00.000Z,completed,Test Links,\"Rochester, NY\",White,Back 9,65.2,109,10,4,300,10,4,0,,,4,4,0,,1,round-1",
     );
   });
 });
 
 describe("historyExportFilename", () => {
   it("stamps the file with the day it was exported", () => {
-    expect(historyExportFilename(new Date(2026, 8, 8))).toBe("fairway-log-history-2026-09-08.csv");
+    expect(historyExportFilename(GOLFER, new Date(2026, 8, 8))).toBe("fairway-log-nell-ray-history-2026-09-08.csv");
+  });
+
+  it("still names a file when the golfer's name has nothing to slug", () => {
+    expect(historyExportFilename("  ", new Date(2026, 8, 8))).toBe("fairway-log-golfer-history-2026-09-08.csv");
   });
 });

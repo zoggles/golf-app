@@ -1,3 +1,4 @@
+import type { Golfer } from "./golfers";
 import type { Course, GolfData, GolfRound, Hole, RoundEvent, RoundSegment, RoundStatus } from "./types";
 
 /**
@@ -75,8 +76,14 @@ interface CourseRow {
   holes: unknown;
 }
 
+interface GolferRow {
+  id: string;
+  name: string;
+}
+
 interface GameRow {
   id: string;
+  golfer_id: string;
   course_id: string;
   course_name: string;
   location: string;
@@ -148,9 +155,14 @@ function gameFromRow(row: GameRow): GolfRound {
   };
 }
 
-function gameToRow(round: GolfRound): GameRow {
+/**
+ * The owner comes from the resolved golfer, never from the round the browser
+ * sent, so a request cannot write into someone else's history.
+ */
+function gameToRow(round: GolfRound, golferId: string): GameRow {
   return {
     id: round.id,
+    golfer_id: golferId,
     course_id: round.courseId,
     course_name: round.courseName,
     location: round.location,
@@ -178,30 +190,34 @@ export async function saveCourseRow(course: Course): Promise<Course> {
   return courseFromRow(row);
 }
 
-export async function saveGameRow(round: GolfRound): Promise<GolfRound> {
+export async function saveGameRow(round: GolfRound, golferId: string): Promise<GolfRound> {
   // The course row is written first so the game's foreign key always resolves,
   // whatever order the client's offline queue drains in.
   if (round.course) await saveCourseRow(round.course);
   const rows = await rest<GameRow[]>("games?on_conflict=id", {
     method: "POST",
     prefer: "resolution=merge-duplicates,return=representation",
-    body: JSON.stringify(gameToRow(round)),
+    body: JSON.stringify(gameToRow(round, golferId)),
   });
   const row = rows[0];
   if (!row) throw new SupabaseRequestError(500, "Game upsert returned no row.");
   return gameFromRow(row);
 }
 
-export async function deleteGameRow(gameId: string): Promise<void> {
-  await rest<undefined>(`games?id=eq.${encodeURIComponent(gameId)}`, {
-    method: "DELETE",
-    prefer: "return=minimal",
-  });
+export async function deleteGameRow(gameId: string, golferId: string): Promise<void> {
+  await rest<undefined>(
+    `games?id=eq.${encodeURIComponent(gameId)}&golfer_id=eq.${encodeURIComponent(golferId)}`,
+    { method: "DELETE", prefer: "return=minimal" },
+  );
 }
 
-export async function readGolfDataFromDb(): Promise<GolfData> {
+/** Courses are a shared catalogue; games belong to one golfer. */
+export async function readGolfDataFromDb(golferId: string): Promise<GolfData> {
   const [gameRows, courseRows] = await Promise.all([
-    rest<GameRow[]>("games?select=*&order=started_at.desc", { method: "GET" }),
+    rest<GameRow[]>(
+      `games?select=*&golfer_id=eq.${encodeURIComponent(golferId)}&order=started_at.desc`,
+      { method: "GET" },
+    ),
     rest<CourseRow[]>("courses?select=*&order=created_at.desc", { method: "GET" }),
   ]);
 
@@ -212,4 +228,35 @@ export async function readGolfDataFromDb(): Promise<GolfData> {
     rounds,
     courses: courseRows.map(courseFromRow),
   };
+}
+
+function golferFromRow(row: GolferRow): Golfer {
+  return { id: row.id, name: row.name };
+}
+
+export async function listGolferRows(): Promise<Golfer[]> {
+  const rows = await rest<GolferRow[]>("golfers?select=id,name&order=created_at.asc", { method: "GET" });
+  return rows.map(golferFromRow);
+}
+
+export async function createGolferRow(name: string): Promise<Golfer> {
+  const rows = await rest<GolferRow[]>("golfers?select=id,name", {
+    method: "POST",
+    prefer: "return=representation",
+    body: JSON.stringify({ name }),
+  });
+  const row = rows[0];
+  if (!row) throw new SupabaseRequestError(500, "Golfer insert returned no row.");
+  return golferFromRow(row);
+}
+
+export async function renameGolferRow(golferId: string, name: string): Promise<Golfer> {
+  const rows = await rest<GolferRow[]>(`golfers?id=eq.${encodeURIComponent(golferId)}&select=id,name`, {
+    method: "PATCH",
+    prefer: "return=representation",
+    body: JSON.stringify({ name }),
+  });
+  const row = rows[0];
+  if (!row) throw new SupabaseRequestError(404, "That golfer no longer exists.");
+  return golferFromRow(row);
 }

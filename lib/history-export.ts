@@ -16,6 +16,7 @@ import type { GolfRound } from "./types";
  */
 
 const COLUMNS = [
+  "golfer",
   "played_on",
   "played_at",
   "status",
@@ -54,8 +55,8 @@ function playedOn(round: GolfRound): string {
   return (round.completedAt ?? round.startedAt).slice(0, 10);
 }
 
-/** Every round the app holds, oldest first, as one CSV row per hole. */
-export function buildHistoryCsv(rounds: GolfRound[]): string {
+/** Every round the app holds for one golfer, oldest first, one row per hole. */
+export function buildHistoryCsv(rounds: GolfRound[], golferName: string): string {
   const ordered = [...rounds].sort((left, right) => playedOn(left).localeCompare(playedOn(right)));
   const handicapIndex = estimateHandicap(rounds);
   const rows: string[] = [COLUMNS.join(",")];
@@ -75,6 +76,7 @@ export function buildHistoryCsv(rounds: GolfRound[]): string {
       const given = roundHandicap == null ? null : handicapStrokesForHole(roundHandicap, hole, holes);
       rows.push(
         [
+          golferName,
           playedOn(round),
           playedAt,
           round.status,
@@ -109,7 +111,12 @@ export function buildHistoryCsv(rounds: GolfRound[]): string {
   return `${rows.join("\r\n")}\r\n`;
 }
 
-export function historyExportFilename(now: Date): string {
+export function historyExportFilename(golferName: string, now: Date): string {
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  return `fairway-log-history-${date}.csv`;
+  const golfer = golferName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  // Two golfers exporting on the same day should not produce the same file.
+  return `fairway-log-${golfer || "golfer"}-history-${date}.csv`;
 }

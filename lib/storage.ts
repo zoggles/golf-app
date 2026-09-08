@@ -2,7 +2,14 @@
 
 import type { Course, GolfData, GolfRound, RoundEvent, RoundSegment } from "./types";
 import { getCourse, getSegmentHoles } from "./courses";
-import { applyOperations, deriveActiveRoundId, enqueueOperation, type PendingOperation } from "./sync-queue";
+import { golferHeaders, readSelectedGolfer, subscribeToSelectedGolfer } from "./golfer-session";
+import {
+  applyOperations,
+  deriveActiveRoundId,
+  enqueueOperation,
+  operationsForGolfer,
+  type PendingOperation,
+} from "./sync-queue";
 
 /**
  * Data adapter for the app.
@@ -11,10 +18,14 @@ import { applyOperations, deriveActiveRoundId, enqueueOperation, type PendingOpe
  * stays instant and a round survives a dead zone on the course: every mutation
  * updates the mirror, then queues an idempotent write that drains to the
  * database as soon as the network allows.
+ *
+ * Everything here is scoped to the selected golfer. The mirror is kept per
+ * golfer so switching shows the right history instantly and offline, while the
+ * queue is shared so one golfer's unsent rounds still drain after a switch.
  */
 
-const CACHE_KEY = "fairway-log:cache:v1";
-const QUEUE_KEY = "fairway-log:queue:v1";
+const CACHE_PREFIX = "fairway-log:cache:v2:";
+const QUEUE_KEY = "fairway-log:queue:v2";
 const CHANGE_EVENT = "fairway-log:change";
 const RETRY_DELAYS_MS = [3_000, 10_000, 30_000, 60_000];
 
@@ -27,9 +38,11 @@ export const EMPTY_GOLF_DATA: GolfData = {
 
 let cachedData: GolfData = EMPTY_GOLF_DATA;
 let queue: PendingOperation[] = [];
+let cachedGolferId: string | null = null;
 let restored = false;
 let started = false;
 let flushing = false;
+let flushAgain = false;
 let failedAttempts = 0;
 let mutationRevision = 0;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -64,10 +77,28 @@ function writeJson(key: string, value: unknown): void {
   }
 }
 
+function currentGolferId(): string | null {
+  return readSelectedGolfer()?.id ?? null;
+}
+
+function cacheKey(golferId: string): string {
+  return CACHE_PREFIX + golferId;
+}
+
+function readMirror(golferId: string | null): GolfData {
+  if (!golferId) return EMPTY_GOLF_DATA;
+  return normalizeData(readJson(cacheKey(golferId))) ?? EMPTY_GOLF_DATA;
+}
+
 function restoreFromCache(): void {
-  if (restored || typeof window === "undefined") return;
+  if (typeof window === "undefined") return;
+  const golferId = currentGolferId();
+  // A switch swaps the whole mirror, so none of the previous golfer's rounds
+  // are left on screen while the new one loads.
+  if (restored && golferId === cachedGolferId) return;
   restored = true;
-  cachedData = normalizeData(readJson(CACHE_KEY)) ?? EMPTY_GOLF_DATA;
+  cachedGolferId = golferId;
+  cachedData = readMirror(golferId);
   queue = readJson<PendingOperation[]>(QUEUE_KEY) ?? [];
 }
 
@@ -77,7 +108,7 @@ function emitChange(): void {
 
 function setData(next: GolfData): void {
   cachedData = next;
-  writeJson(CACHE_KEY, next);
+  if (cachedGolferId) writeJson(cacheKey(cachedGolferId), next);
   emitChange();
 }
 
@@ -85,9 +116,19 @@ function persistQueue(): void {
   writeJson(QUEUE_KEY, queue);
 }
 
-function queueOperation(operation: PendingOperation): void {
+/** A mutation names the record it wants stored; the golfer is stamped here. */
+type UnownedOperation =
+  | { kind: "save-course"; course: Course }
+  | { kind: "save-game"; round: GolfRound }
+  | { kind: "delete-game"; roundId: string };
+
+function queueOperation(operation: UnownedOperation): void {
+  const golferId = currentGolferId();
+  // Nothing is stored without a golfer to store it for. The app does not offer
+  // scoring until one is selected, so this is a guard rather than a path.
+  if (!golferId) return;
   mutationRevision += 1;
-  queue = enqueueOperation(queue, operation);
+  queue = enqueueOperation(queue, { ...operation, golferId });
   persistQueue();
   failedAttempts = 0;
   void flushQueue();
@@ -104,20 +145,23 @@ function scheduleRetry(): void {
 
 /** Resolves once the write has landed; throws when it is worth retrying. */
 async function sendOperation(operation: PendingOperation): Promise<void> {
+  // The queued golfer travels with the write, so a round logged before a switch
+  // still lands in the history it was played for.
+  const headers = { "Content-Type": "application/json", ...golferHeaders(operation.golferId) };
   const request =
     operation.kind === "save-course"
       ? fetch("/api/courses", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(operation.course),
         })
       : operation.kind === "save-game"
         ? fetch("/api/games", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify(operation.round),
           })
-        : fetch(`/api/games?id=${encodeURIComponent(operation.roundId)}`, { method: "DELETE" });
+        : fetch(`/api/games?id=${encodeURIComponent(operation.roundId)}`, { method: "DELETE", headers });
 
   const response = await request;
   if (response.ok) return;
@@ -133,7 +177,14 @@ async function sendOperation(operation: PendingOperation): Promise<void> {
 }
 
 async function flushQueue(): Promise<void> {
-  if (flushing || typeof window === "undefined") return;
+  if (typeof window === "undefined") return;
+  if (flushing) {
+    // Signal returning while a doomed flush is still awaiting its failing
+    // request would otherwise be swallowed, leaving the round to wait out the
+    // backoff. The pass already running picks this up instead.
+    flushAgain = true;
+    return;
+  }
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     scheduleRetry();
     return;
@@ -159,20 +210,30 @@ async function flushQueue(): Promise<void> {
   } finally {
     flushing = false;
   }
+
+  if (flushAgain) {
+    flushAgain = false;
+    await flushQueue();
+  }
 }
 
 async function hydrateFromServer(): Promise<void> {
   const revisionAtStart = mutationRevision;
+  const golferId = currentGolferId();
+  if (!golferId) return;
   try {
-    const response = await fetch("/api/golf-data", { cache: "no-store" });
+    const response = await fetch("/api/golf-data", { cache: "no-store", headers: golferHeaders(golferId) });
     if (!response.ok) return;
     const snapshot = normalizeData(await response.json());
     if (!snapshot) return;
     // A round logged while this request was in flight is newer than the
     // snapshot, so the snapshot is dropped rather than allowed to overwrite it.
     if (mutationRevision !== revisionAtStart) return;
+    // A switch while this request was in flight makes the snapshot the wrong
+    // golfer's history.
+    if (currentGolferId() !== golferId) return;
     // Local writes that have not drained yet stay on top of the server view.
-    setData(applyOperations(snapshot, queue));
+    setData(applyOperations(snapshot, operationsForGolfer(queue, golferId)));
   } catch {
     // Offline or mid-deploy: the cached mirror keeps the app usable.
   }
@@ -190,6 +251,11 @@ function start(): void {
   started = true;
   restoreFromCache();
   void sync();
+  subscribeToSelectedGolfer(() => {
+    restoreFromCache();
+    emitChange();
+    void sync();
+  });
   window.addEventListener("online", () => void sync());
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") void sync();
@@ -207,7 +273,8 @@ export function subscribeToGolfData(onStoreChange: () => void): () => void {
   start();
   const onExternalChange = () => {
     // Another tab wrote to the mirror.
-    cachedData = normalizeData(readJson(CACHE_KEY)) ?? EMPTY_GOLF_DATA;
+    cachedGolferId = currentGolferId();
+    cachedData = readMirror(cachedGolferId);
     queue = readJson<PendingOperation[]>(QUEUE_KEY) ?? [];
     onStoreChange();
   };

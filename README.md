@@ -1,9 +1,10 @@
 # Fairway Log
 
-A mobile-first, voice-friendly golf round tracker. Rounds and course scorecards live in Supabase, with a local mirror so scoring keeps working when the course has no signal.
+A mobile-first, voice-friendly golf round tracker. Golfers, rounds, and course scorecards live in Supabase, with a local mirror so scoring keeps working when the course has no signal.
 
 ## Included
 
+- Pick which golfer is playing; every round is recorded against them
 - Start a front nine, back nine, or full round by voice or text
 - Research an unknown course on demand and turn its published scorecard into app data
 - Preloaded official white-tee scorecard for Genesee Valley Golf Course — South
@@ -11,7 +12,7 @@ A mobile-first, voice-friendly golf round tracker. Rounds and course scorecards 
 - Update current or past holes with general requests, including several corrections at once
 - Manual one-handed score entry and complete scorecard
 - Log a finished round by photographing its paper scorecard, with a review step before it is saved
-- Supabase-backed record of every game, synced across devices
+- Supabase-backed record of every game, synced across devices and kept separate per golfer
 - Keeps scoring through dead zones and flushes to the database when signal returns
 - Progress dashboard with scoring, best-round, and handicap-trend metrics
 - Export the full round history to a CSV spreadsheet
@@ -27,6 +28,35 @@ npm run dev
 Then open [http://localhost:3000](http://localhost:3000).
 
 Course research, AI command interpretation, and cloud transcription use Vercel AI Gateway through the linked project's OIDC token. The Vercel team must have AI Gateway billing enabled. Browser speech recognition and the local command parser provide a fallback for scoring when available.
+
+## Golfers, and where authentication will go
+
+There is no sign-in yet. The app asks who is playing, remembers that choice in
+the browser, and records every round against them. Switching golfers swaps the
+whole view, and each golfer's rounds are invisible to the others.
+
+The point of interest is `lib/golfers.ts`. Every request that reads or writes
+rounds names its golfer in an `x-golfer-id` header, and `resolveGolferId` is the
+only thing that reads it:
+
+- Routes never take an owner from a request body. `saveGameRow` stamps
+  `golfer_id` from the resolved golfer, so a crafted payload cannot write into
+  someone else's history, and a database trigger refuses to move an existing
+  game to a different golfer.
+- Reads are filtered the same way, so a query cannot widen past its caller.
+- A missing or malformed golfer is refused rather than silently scoped to
+  nothing.
+
+Adding accounts therefore means verifying a session inside `resolveGolferId` and
+ignoring the header. No route, query, or table below it changes, and
+`golfers.auth_user_id` is where a row would link to an authenticated account.
+
+On the browser side, `lib/golfer-session.ts` is the matching seam: it owns the
+selection and the headers to send, and is what a real session client replaces.
+The local mirror is keyed per golfer so a switch is instant and works offline,
+while the write queue is shared and stamps each pending write with the golfer it
+belongs to — a round logged in a dead zone still drains to the right history
+even if someone else picks up the phone first.
 
 ## Logging a paper scorecard
 
@@ -51,9 +81,9 @@ belongs to the golfer, and nothing is written until the review is confirmed.
 
 ## Exporting the history
 
-`Progress` has an **Export round history** button that downloads every stored
-round as `fairway-log-history-<date>.csv`, built in the browser from the local
-mirror so it works without signal.
+`Progress` has an **Export round history** button that downloads the selected
+golfer's rounds as `fairway-log-<golfer>-history-<date>.csv`, built in the
+browser from the local mirror so it works without signal.
 
 The file is one row per hole, with the round's date, course, tee, segment,
 rating, and slope repeated on each row alongside that hole's par, yardage,
@@ -71,8 +101,12 @@ Supabase is the source of truth. Two tables hold everything:
 
 | Table | Holds |
 | --- | --- |
+| `golfers` | One row per person using the app: `id` and `name`. |
 | `courses` | One row per course and tee: rating, slope, par, total yardage, source URL, and the full per-hole scorecard (`holes` jsonb — par, yardage, handicap, club, strategy). |
-| `games` | One row per game played: course reference, segment, start and completion times, status, hole-by-hole `scores`, the voice/manual `events` log, and a `course_snapshot` of the scorecard as it was that day. |
+| `games` | One row per game played: the `golfer_id` that owns it, course reference, segment, start and completion times, status, hole-by-hole `scores`, the voice/manual `events` log, and a `course_snapshot` of the scorecard as it was that day. |
+
+Courses are a shared catalogue — a scorecard is the same whoever plays it — while
+games belong to exactly one golfer.
 
 The browser never holds database credentials. `lib/storage.ts` talks to route
 handlers under `app/api/`, and only those run queries, using the project's
