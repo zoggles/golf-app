@@ -49,7 +49,22 @@ export function ProgressPage() {
             <div className="trend-bars">
               {summaries.slice(0, 6).reverse().map((round) => {
                 const height = Math.max(18, Math.min(100, 22 + Math.abs(round.toPar) * 7));
-                return <div key={round.id} className="trend-column"><span>{formatToPar(round.toPar)}</span><i style={{ height: `${height}px` }} /><small>{new Date(round.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</small></div>;
+                const date = new Date(round.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                return (
+                  <Link
+                    key={round.id}
+                    href={`/rounds/${round.id}`}
+                    className="trend-column"
+                    aria-label={`Open ${round.courseName}, ${round.holesPlayed} holes, ${formatToPar(round.toPar)} to par`}
+                  >
+                    <span className="trend-score">{formatToPar(round.toPar)}</span>
+                    <i className="trend-bar" style={{ height: `${height}px` }} />
+                    <span className="trend-round-meta">
+                      <strong title={round.courseName}>{round.courseName}</strong>
+                      <small>{round.holesPlayed} holes · {date}</small>
+                    </span>
+                  </Link>
+                );
               })}
             </div>
           </section>
