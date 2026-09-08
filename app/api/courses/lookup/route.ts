@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     if (!query) return Response.json({ error: "Tell me the course name and location." }, { status: 400 });
 
     const result = await generateText({
-      model: "google/gemini-3.8-flash",
+      model: "google/gemini-2.5-flash",
       maxOutputTokens: 8000,
       output: Output.object({ schema: courseSchema }),
       stopWhen: isStepCount(4),
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Course lookup failed", error);
     const diagnosticCode = error instanceof Error ? error.name : "UnknownError";
-    if (String(error).toLowerCase().includes("valid credit card")) {
+    if (/valid credit card|free tier users do not have access/i.test(String(error))) {
       return Response.json(
         { error: "Live course research is ready, but this Vercel team must add a payment method to unlock its AI Gateway credits.", setupRequired: true },
         { status: 503 },
