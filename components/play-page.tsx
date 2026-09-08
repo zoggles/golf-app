@@ -17,6 +17,7 @@ import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/cours
 import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundScore } from "@/lib/storage";
 import { formatToPar, summarizeRound } from "@/lib/metrics";
 import { parseScoreCommands, parseStartCommand } from "@/lib/voice-parser";
+import { COMMON_TEES, extractTeeMention, normalizeTee, samePhysicalCourse } from "@/lib/tee-selection";
 import type { Course, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { VoiceControl } from "./voice-control";
@@ -34,6 +35,7 @@ function RoundStarter() {
   const [message, setMessage] = useState<string | null>(null);
   const [activity, setActivity] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course>(GENESEE_VALLEY_SOUTH);
+  const [teeChoice, setTeeChoice] = useState(GENESEE_VALLEY_SOUTH.tee);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [courseConfirmed, setCourseConfirmed] = useState(true);
@@ -47,6 +49,69 @@ function RoundStarter() {
     return [...byId.values()];
   }, [data.courses, data.rounds]);
 
+  const teeOptions = useMemo(() => {
+    const values = new Map<string, string>();
+    for (const tee of [teeChoice, ...availableCourses.filter((course) => samePhysicalCourse(course, selectedCourse)).map((course) => course.tee), ...COMMON_TEES]) {
+      values.set(normalizeTee(tee), tee);
+    }
+    return [...values.values()];
+  }, [availableCourses, selectedCourse, teeChoice]);
+
+  async function researchCourse(query: string, status: string): Promise<Course | null> {
+    const previousTee = selectedCourse.tee;
+    setCourseConfirmed(false);
+    setIsLookingUp(true);
+    setLookupError(null);
+    setMessage(null);
+    setActivity(status);
+    try {
+      const response = await fetch("/api/courses/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      const result = (await response.json()) as { course?: Course; error?: string };
+      if (!response.ok || !result.course) throw new Error(result.error || "Course lookup failed.");
+      saveCourse(result.course);
+      setSelectedCourse(result.course);
+      setTeeChoice(result.course.tee);
+      setCourseConfirmed(true);
+      if (result.course.holes.length === 9) setSegment("front9");
+      return result.course;
+    } catch (cause) {
+      setTeeChoice(previousTee);
+      setCourseConfirmed(true);
+      setLookupError(cause instanceof Error ? cause.message : "I couldn’t verify that course and tee.");
+      return null;
+    } finally {
+      setIsLookingUp(false);
+      setActivity(null);
+    }
+  }
+
+  async function chooseTee(course: Course, tee: string) {
+    setTeeChoice(tee);
+    setLookupError(null);
+    setMessage(null);
+    const savedTee = availableCourses.find((candidate) =>
+      samePhysicalCourse(candidate, course) && normalizeTee(candidate.tee) === normalizeTee(tee),
+    );
+    if (savedTee) {
+      setSelectedCourse(savedTee);
+      setTeeChoice(savedTee.tee);
+      setCourseConfirmed(true);
+      if (savedTee.holes.length === 9) setSegment("front9");
+      setMessage(`${savedTee.tee} tee scorecard loaded.`);
+      return;
+    }
+
+    const result = await researchCourse(
+      `${course.name}, ${course.location}. Use the ${tee} tee and return that tee's complete scorecard.`,
+      `Finding the ${tee} tee scorecard and recalculating yardages and advice…`,
+    );
+    if (result) setMessage(`Verified the ${result.tee} tee scorecard and updated hole advice.`);
+  }
+
   async function handleVoice(text: string) {
     const command = parseStartCommand(text);
     setPhrase(text);
@@ -55,45 +120,32 @@ function RoundStarter() {
     setMessage(null);
     setActivity("Checking your saved courses…");
     const normalizedText = text.toLowerCase();
+    const requestedTee = extractTeeMention(text);
     const savedCourse = availableCourses.find((course) =>
       normalizedText.includes(course.shortName.toLowerCase()) || normalizedText.includes(course.name.toLowerCase()),
     );
     if (command.courseId === GENESEE_VALLEY_SOUTH.id || savedCourse) {
       const course = savedCourse ?? GENESEE_VALLEY_SOUTH;
+      if (requestedTee && normalizeTee(requestedTee) !== normalizeTee(course.tee)) {
+        await chooseTee(course, requestedTee);
+        return;
+      }
       setSelectedCourse(course);
+      setTeeChoice(course.tee);
       setMessage(`Found ${course.shortName}. ${segmentLabel(command.segment)} is ready.`);
       setCourseConfirmed(true);
       setActivity(null);
       return;
     }
-    setCourseConfirmed(false);
-    setIsLookingUp(true);
-    setActivity("Searching published scorecards and verifying hole data…");
-    try {
-      const response = await fetch("/api/courses/lookup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: text }),
-      });
-      const result = (await response.json()) as { course?: Course; error?: string };
-      if (!response.ok || !result.course) throw new Error(result.error || "Course lookup failed.");
-      saveCourse(result.course);
-      setSelectedCourse(result.course);
-      setCourseConfirmed(true);
-      if (result.course.holes.length === 9) setSegment("front9");
-      setMessage(`Verified ${result.course.shortName} from its published scorecard.`);
-    } catch (cause) {
-      setLookupError(cause instanceof Error ? cause.message : "I couldn’t verify that course.");
-    } finally {
-      setIsLookingUp(false);
-      setActivity(null);
-    }
+    const result = await researchCourse(text, "Searching published scorecards and verifying hole data…");
+    if (result) setMessage(`Verified ${result.shortName} from its published ${result.tee} tee scorecard.`);
   }
 
   function chooseCourse(courseId: string) {
     const course = availableCourses.find((item) => item.id === courseId);
     if (!course) return;
     setSelectedCourse(course);
+    setTeeChoice(course.tee);
     setCourseConfirmed(true);
     setLookupError(null);
     setMessage(`${course.shortName} selected.`);
@@ -132,9 +184,9 @@ function RoundStarter() {
         {lookupError ? <div className="voice-error">{lookupError}</div> : null}
         <div className="field-group">
           <label htmlFor="saved-course">Saved courses</label>
-          <select id="saved-course" className="course-select" value={selectedCourse.id} onChange={(event) => chooseCourse(event.target.value)}>
+          <select id="saved-course" className="course-select" value={selectedCourse.id} onChange={(event) => chooseCourse(event.target.value)} disabled={isLookingUp}>
             {availableCourses.map((course) => (
-              <option key={course.id} value={course.id}>{course.shortName} — {course.location}</option>
+              <option key={course.id} value={course.id}>{course.shortName} — {course.tee} tees — {course.location}</option>
             ))}
           </select>
         </div>
@@ -145,6 +197,19 @@ function RoundStarter() {
             <span><strong>{selectedCourse.shortName}</strong><small><MapPin size={13} /> {selectedCourse.location}</small></span>
             <Check className="choice-check" size={19} weight="bold" />
           </div>
+        </div>
+        <div className="field-group">
+          <label htmlFor="tee-choice">Tee</label>
+          <select
+            id="tee-choice"
+            className="course-select"
+            value={teeChoice}
+            onChange={(event) => void chooseTee(selectedCourse, event.target.value)}
+            disabled={isLookingUp}
+          >
+            {teeOptions.map((tee) => <option key={tee} value={tee}>{tee === "Forward" ? "Forward / women's" : tee}</option>)}
+          </select>
+          <small className="field-help">Changing tees refreshes the verified yardages, rating, slope, club suggestions, and hole strategy.</small>
         </div>
         <div className="field-group">
           <label>Holes</label>
@@ -269,7 +334,7 @@ function ActiveRound({ roundId }: { roundId: string }) {
         </div>
         <div className="hole-stats">
           <div><small>PAR</small><strong>{currentHole.par}</strong></div>
-          <div><small>WHITE</small><strong>{currentHole.yards}</strong><span>YDS</span></div>
+          <div><small>{round.tee.toUpperCase()}</small><strong>{currentHole.yards}</strong><span>YDS</span></div>
           <div><small>HDCP</small><strong>{currentHole.handicap}</strong></div>
         </div>
         <div className="club-callout">
