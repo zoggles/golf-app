@@ -172,6 +172,13 @@ a { color: inherit; text-decoration: none; }
 .hole-cell .hole-tracked { color: var(--sand); }
 .hole-cell strong { font-size: 19px; }
 .round-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 24px; }
+.completion-area { scroll-margin: 24px; }
+.completion-ready { margin-top: 24px; padding: 16px 18px; border: 1px solid rgba(173,240,95,.28); border-radius: 15px; background: rgba(173,240,95,.075); color: var(--green); display: flex; align-items: center; gap: 12px; }
+.completion-ready > svg { flex-shrink: 0; }
+.completion-ready span { display: flex; flex-direction: column; gap: 3px; }
+.completion-ready strong { font-size: 14px; }
+.completion-ready small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.completion-ready + .round-actions { margin-top: 12px; }
 .completion-note { margin: 10px 0 0; color: var(--faint); font-size: 11px; text-align: right; }
 .progress-page { max-width: 880px; }
 .progress-hero { margin-bottom: 34px; }

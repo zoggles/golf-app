@@ -6,6 +6,7 @@ import {
   CaretLeft,
   CaretRight,
   Check,
+  CheckCircle,
   FlagPennant,
   MapPin,
   Minus,
@@ -17,7 +18,7 @@ import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/cours
 import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundHoleMetrics, updateRoundScore } from "@/lib/storage";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, summarizeRound } from "@/lib/metrics";
 import { nextHoleAfterVoiceUpdates, parseHoleMetricCommands, parseScoreCommands, parseStartCommand, type HoleMetricCommand, type ScoreCommand } from "@/lib/voice-parser";
-import { COMMON_TEES, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeOptionLabel } from "@/lib/tee-selection";
+import { COMMON_TEES, courseListOptions, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeOptionLabel } from "@/lib/tee-selection";
 import type { Course, HoleMetrics, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { ScorecardPhotoImport } from "./scorecard-photo-import";
@@ -60,6 +61,8 @@ function RoundStarter() {
     }
     return [...byId.values()];
   }, [data.courses, data.rounds]);
+  const savedCourseOptions = useMemo(() => courseListOptions(availableCourses), [availableCourses]);
+  const selectedCourseOption = savedCourseOptions.find((course) => samePhysicalCourse(course, selectedCourse)) ?? selectedCourse;
 
   const teeOptions = useMemo(() => {
     const values = new Map<string, string>();
@@ -151,7 +154,7 @@ function RoundStarter() {
     setMessage(null);
     setActivity("Checking your saved courses…");
     const requestedTee = extractTeeMention(text);
-    const savedCourse = availableCourses.find((course) => courseMatchesPhrase(course, text));
+    const savedCourse = savedCourseOptions.find((course) => courseMatchesPhrase(course, text));
     if (command.courseId === GENESEE_VALLEY_SOUTH.id || savedCourse) {
       const course = savedCourse ?? GENESEE_VALLEY_SOUTH;
       if (requestedTee && normalizeTee(requestedTee) !== normalizeTee(course.tee)) {
@@ -170,7 +173,7 @@ function RoundStarter() {
   }
 
   function chooseCourse(courseId: string) {
-    const course = availableCourses.find((item) => item.id === courseId);
+    const course = savedCourseOptions.find((item) => item.id === courseId);
     if (!course) return;
     cancelPendingLookup();
     setSelectedCourse(course);
@@ -213,9 +216,9 @@ function RoundStarter() {
         {lookupError ? <div className="voice-error">{lookupError}</div> : null}
         <div className="field-group">
           <label htmlFor="saved-course">Saved courses</label>
-          <select id="saved-course" className="course-select" value={selectedCourse.id} onChange={(event) => chooseCourse(event.target.value)} disabled={isLookingUp}>
-            {availableCourses.map((course) => (
-              <option key={course.id} value={course.id}>{course.shortName} — {course.tee} tees — {course.location}</option>
+          <select id="saved-course" className="course-select" value={selectedCourseOption.id} onChange={(event) => chooseCourse(event.target.value)} disabled={isLookingUp}>
+            {savedCourseOptions.map((course) => (
+              <option key={course.id} value={course.id}>{course.shortName}</option>
             ))}
           </select>
         </div>
@@ -275,6 +278,7 @@ function ActiveRound({ roundId }: { roundId: string }) {
   );
   const [feedback, setFeedback] = useState("Ready for your first score.");
   const [activity, setActivity] = useState<string | null>(null);
+  const completionActionsRef = useRef<HTMLDivElement | null>(null);
 
   const currentHole = course.holes.find((item) => item.number === selectedHole) ?? course.holes[0];
 
@@ -289,6 +293,13 @@ function ActiveRound({ roundId }: { roundId: string }) {
   const currentMetrics = metricsByHole[currentHole.number] ?? {};
   const currentMetricCount = Object.values(currentMetrics).filter((value) => value !== undefined).length;
 
+  function revealCompletion() {
+    setFeedback("Final score saved. Every hole is recorded—complete the round when you’re ready.");
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => completionActionsRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    });
+  }
+
   function applyScore(holeNumber: number, strokes: number, source: "voice" | "manual", rawText?: string) {
     const validHole = holes.some((holeItem) => holeItem.number === holeNumber);
     if (!validHole) {
@@ -296,7 +307,10 @@ function ActiveRound({ roundId }: { roundId: string }) {
       return;
     }
     updateRoundScore(round!.id, holeNumber, strokes, source, rawText);
-    setFeedback(`Hole ${holeNumber} saved at ${strokes} ${strokes === 1 ? "stroke" : "strokes"}.`);
+    const scoresAfterUpdate = { ...round!.scores, [holeNumber]: strokes };
+    const finishedScoring = holes.every((hole) => scoresAfterUpdate[hole.number] != null);
+    if (!allHolesScored && finishedScoring) revealCompletion();
+    else setFeedback(`Hole ${holeNumber} saved at ${strokes} ${strokes === 1 ? "stroke" : "strokes"}.`);
     const index = holes.findIndex((holeItem) => holeItem.number === holeNumber);
     const nextHole = holes.slice(index + 1).find((holeItem) => round!.scores[holeItem.number] == null);
     if (nextHole) selectHole(nextHole.number);
@@ -317,7 +331,11 @@ function ActiveRound({ roundId }: { roundId: string }) {
     );
     if (nextHole !== selectedHole) selectHole(nextHole);
     const changedHoles = [...new Set([...updates.map((update) => update.hole), ...metricUpdates.map((update) => update.hole)])];
-    setFeedback(reply || `Saved ${changedHoles.map((hole) => `hole ${hole}`).join(" and ")}.`);
+    const scoresAfterUpdate = { ...round!.scores };
+    for (const update of updates) scoresAfterUpdate[update.hole] = update.strokes;
+    const finishedScoring = holes.every((hole) => scoresAfterUpdate[hole.number] != null);
+    if (!allHolesScored && finishedScoring) revealCompletion();
+    else setFeedback(reply || `Saved ${changedHoles.map((hole) => `hole ${hole}`).join(" and ")}.`);
   }
 
   async function handleVoice(text: string) {
@@ -438,7 +456,7 @@ function ActiveRound({ roundId }: { roundId: string }) {
       <section className="voice-score-card surface-card">
         <div className="section-heading tight"><div><p className="eyebrow">HANDS-FREE UPDATE</p><h2>Tell me what happened</h2></div></div>
         <VoiceControl onSubmit={handleVoice} placeholder="e.g. Hole 3: 6 strokes, 2 putts, fairway hit" example='Try “Hole 3: 6 strokes, 2 putts, fairway hit”' activity={activity} compact />
-        <div className="feedback-line"><Sparkle size={15} weight="fill" /> {feedback}</div>
+        <div className="feedback-line" role="status" aria-live="polite"><Sparkle size={15} weight="fill" /> {feedback}</div>
       </section>
 
       <section className="scorecard-section">
@@ -459,13 +477,21 @@ function ActiveRound({ roundId }: { roundId: string }) {
         </div>
       </section>
 
-      <section className="round-actions">
-        <button className="secondary-button" type="button" onClick={() => discardActiveRound(round.id)}><Trash size={18} /> Discard</button>
-        <button className="primary-button" type="button" onClick={() => completeRound(round.id)} disabled={!allHolesScored}>
-          Complete round <FlagPennant size={18} weight="fill" />
-        </button>
-      </section>
-      {!allHolesScored ? <p className="completion-note">Score {holes.length - completedHoles} more {holes.length - completedHoles === 1 ? "hole" : "holes"} to complete this round.</p> : null}
+      <div ref={completionActionsRef} className="completion-area">
+        {allHolesScored ? (
+          <div className="completion-ready" role="status">
+            <CheckCircle size={22} weight="fill" />
+            <span><strong>All scores recorded</strong><small>Your scorecard is complete. Save the game to add it to Progress.</small></span>
+          </div>
+        ) : null}
+        <section className="round-actions">
+          <button className="secondary-button" type="button" onClick={() => discardActiveRound(round.id)}><Trash size={18} /> Discard</button>
+          <button className="primary-button" type="button" onClick={() => completeRound(round.id)} disabled={!allHolesScored}>
+            Save game <FlagPennant size={18} weight="fill" />
+          </button>
+        </section>
+        {!allHolesScored ? <p className="completion-note">Score {holes.length - completedHoles} more {holes.length - completedHoles === 1 ? "hole" : "holes"} to complete this round.</p> : null}
+      </div>
     </>
   );
 }

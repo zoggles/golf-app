@@ -66,6 +66,20 @@ export function samePhysicalCourse(left: Course, right: Course) {
   return normalizeTee(left.name) === normalizeTee(right.name) && normalizeTee(left.location) === normalizeTee(right.location);
 }
 
+/** One entry per course for course pickers, preferring its verified White card. */
+export function courseListOptions(courses: Course[]): Course[] {
+  const options: Course[] = [];
+  for (const course of courses) {
+    const existingIndex = options.findIndex((candidate) => samePhysicalCourse(candidate, course));
+    if (existingIndex < 0) {
+      options.push(course);
+    } else if (normalizeTee(course.tee) === "white" && normalizeTee(options[existingIndex].tee) !== "white") {
+      options[existingIndex] = course;
+    }
+  }
+  return options;
+}
+
 export function extractTeeMention(text: string): string | null {
   const namedTee = text.match(/\b(forward|red|gold|yellow|white|blue|black|green|silver|orange|women'?s|lad(?:y|ies))\s+tees?\b/i);
   const playingFrom = text.match(/\b(?:from|off|using)\s+(?:the\s+)?(forward|red|gold|yellow|white|blue|black|green|silver|orange)\b/i);

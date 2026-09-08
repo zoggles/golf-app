@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { courseMatchesPhrase, extractTeeMention, teeDescription, teeOptionLabel } from "./tee-selection";
+import { courseListOptions, courseMatchesPhrase, extractTeeMention, teeDescription, teeOptionLabel } from "./tee-selection";
 import { GENESEE_VALLEY_SOUTH } from "./courses";
 
 describe("extractTeeMention", () => {
@@ -34,5 +34,11 @@ describe("extractTeeMention", () => {
     expect(courseMatchesPhrase(skenandoa, "Shenandoah, Clinton, New York, 18 holes")).toBe(true);
     expect(courseMatchesPhrase(skenandoa, "Shenendoa in Clinton for 18")).toBe(true);
     expect(courseMatchesPhrase(skenandoa, "Shenendoah at Turning Stone")).toBe(false);
+  });
+
+  it("shows each physical course once and prefers its white scorecard", () => {
+    const red = { ...GENESEE_VALLEY_SOUTH, id: "genesee-red", tee: "Red" };
+    const blue = { ...GENESEE_VALLEY_SOUTH, id: "genesee-blue", tee: "Blue" };
+    expect(courseListOptions([red, blue, GENESEE_VALLEY_SOUTH])).toEqual([GENESEE_VALLEY_SOUTH]);
   });
 });
