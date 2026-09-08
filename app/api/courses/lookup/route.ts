@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     if (!query) return Response.json({ error: "Tell me the course name and location." }, { status: 400 });
 
     const { text } = await generateText({
-      model: "openai/gpt-5.4",
+      model: "inclusionai/ling-3.0-flash-sante-free",
       system: `You research golf courses for a live scorecard. Always use web search before answering. Identify the exact course from the user's wording. Prefer an official course scorecard or course website, then reputable golf directories. Return the complete 9- or 18-hole scorecard for one named tee; use White/Middle tees unless the user specifies another tee. Never fabricate missing hole pars, yardages, rating, or slope. If sources disagree, prefer the official scorecard. Suggested clubs and strategy are general, conservative guidance inferred from yardage—not factual course data. The id must be a stable lowercase slug including course and tee. sourceUrl must be the best page or PDF supporting the scorecard. If the exact course cannot be confidently identified with a complete scorecard, throw an error rather than substituting another course.`,
       prompt: `Find and structure this golf course and tee for a scorecard: ${query}\n\nReturn only a JSON object matching this schema:\n${JSON.stringify(z.toJSONSchema(courseSchema))}`,
       tools: {
