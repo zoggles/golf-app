@@ -24,6 +24,9 @@ export async function POST(request: Request) {
     const { text: resultText } = await generateText({
       model: "google/gemini-2.5-flash",
       maxOutputTokens: 600,
+      providerOptions: {
+        google: { thinkingConfig: { thinkingBudget: 0 } },
+      },
       system: `Interpret natural-language updates to an active golf scorecard. A score is total strokes for a hole, never strokes relative to par. Resolve golf terms from the supplied hole pars: eagle is par-2, birdie par-1, par is par, bogey par+1, double bogey par+2, triple bogey par+3. The golfer may correct any current or past hole and may update several holes in one message. Later corrections in the same message win. Only return an update when both hole and score are clear; otherwise return no updates and ask a concise clarifying question. Never alter a hole outside the supplied list.`,
       prompt: `${JSON.stringify({ utterance: text, currentHole: body.currentHole, holes: body.holes, existingScores: body.scores })}\n\nReturn only a JSON object matching this schema:\n${JSON.stringify(z.toJSONSchema(commandSchema))}`,
     });
