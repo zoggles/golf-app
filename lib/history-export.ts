@@ -1,5 +1,5 @@
 import { getSegmentHoles, segmentLabel } from "./courses";
-import { estimateHandicap, estimateRoundHandicap, handicapStrokesForHole } from "./metrics";
+import { estimateHandicap, estimateRoundHandicap, handicapStrokesForHole, holeMetricsByNumber } from "./metrics";
 import { dateInputValue } from "./round-date";
 import type { GolfRound } from "./types";
 
@@ -35,6 +35,10 @@ const COLUMNS = [
   "hole_to_par",
   "hole_handicap_strokes",
   "net_strokes",
+  "putts",
+  "fairway",
+  "penalty_strokes",
+  "blow_up",
   "round_strokes",
   "round_par",
   "round_to_par",
@@ -80,12 +84,17 @@ export function buildHistoryCsv(rounds: GolfRound[], golferName: string): string
     const roundStrokes = scored.reduce((total, hole) => total + round.scores[hole.number], 0);
     const roundPar = scored.reduce((total, hole) => total + hole.par, 0);
     const roundHandicap = estimateRoundHandicap(handicapIndex, round.course, round.segment);
+    const metrics = holeMetricsByNumber(round);
 
     for (const hole of holes) {
       const strokes = round.scores[hole.number] ?? null;
       // Without an index there are no strokes to give, which is not the same
       // as giving none, so those cells stay empty rather than reading zero.
       const given = roundHandicap == null ? null : handicapStrokesForHole(roundHandicap, hole, holes);
+      const holeMetrics = metrics[hole.number] ?? {};
+      const blowUp = holeMetrics.blowUp !== undefined
+        ? (holeMetrics.blowUp ? "yes" : "no")
+        : strokes == null ? null : (strokes >= hole.par + 3 ? "yes" : "no");
       rows.push(
         [
           golferName,
@@ -106,6 +115,10 @@ export function buildHistoryCsv(rounds: GolfRound[], golferName: string): string
           strokes == null ? null : strokes - hole.par,
           given,
           strokes == null || given == null ? null : strokes - given,
+          holeMetrics.putts ?? null,
+          holeMetrics.fairway ?? null,
+          holeMetrics.penaltyStrokes ?? null,
+          blowUp,
           roundStrokes,
           roundPar,
           roundStrokes - roundPar,

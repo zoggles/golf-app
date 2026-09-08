@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { ArrowLeft, Check, MapPin, Minus, Plus, Trash } from "@phosphor-icons/react";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { getSegmentHoles, segmentLabel } from "@/lib/courses";
-import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole } from "@/lib/metrics";
+import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, trackedRoundMetrics } from "@/lib/metrics";
 import { dateInputValue, parseDateInput, roundDateInputValue } from "@/lib/round-date";
 import { deleteRound, updateCompletedRound } from "@/lib/storage";
 import type { GolfRound } from "@/lib/types";
@@ -42,6 +42,9 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
   const total = holes.reduce((sum, hole) => sum + (scores[hole.number] ?? 0), 0);
   const par = holes.reduce((sum, hole) => sum + hole.par, 0);
   const roundHandicap = estimateRoundHandicap(handicapIndex, course, round.segment);
+  const metricsByHole = holeMetricsByNumber(round);
+  const tracked = trackedRoundMetrics(round);
+  const hasTrackedStats = tracked.puttsHoles > 0 || tracked.penaltyHoles > 0 || tracked.fairwaysTracked > 0;
 
   function changeScore(holeNumber: number, change: number) {
     setSaved(false);
@@ -79,6 +82,15 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
         <div className="round-detail-total"><small>TOTAL</small><strong>{total}</strong><span>{formatToPar(total - par)}</span></div>
       </header>
 
+      {hasTrackedStats ? (
+        <section className="round-tracked-summary surface-card" aria-label="Tracked on-course stats">
+          {tracked.fairwaysTracked ? <div><small>FAIRWAYS</small><strong>{Math.round((tracked.fairwaysHit / tracked.fairwaysTracked) * 100)}%</strong><span>{tracked.fairwaysHit} of {tracked.fairwaysTracked}</span></div> : null}
+          {tracked.puttsHoles ? <div><small>PUTTS</small><strong>{tracked.puttsTotal}</strong><span>{tracked.puttsHoles} {tracked.puttsHoles === 1 ? "hole" : "holes"} tracked</span></div> : null}
+          {tracked.penaltyHoles ? <div><small>PENALTIES</small><strong>{tracked.penaltyStrokes}</strong><span>{tracked.penaltyHoles} {tracked.penaltyHoles === 1 ? "hole" : "holes"} tracked</span></div> : null}
+          <div><small>BLOW-UPS</small><strong>{tracked.blowUpHoles}</strong><span>marked or triple+</span></div>
+        </section>
+      ) : null}
+
       <section className="round-editor surface-card">
         <div className="round-date-field">
           <label htmlFor="round-played-on">Date played</label>
@@ -95,8 +107,10 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
         </div>
         <p className="round-handicap-help">Hole HCP: 1 is hardest, 18 is easiest. “+1” is a stroke allocated from your Round HCP.</p>
         <div className="round-editor-heading"><span>HOLE</span><span>PAR</span><span>HOLE HCP</span><span>YARDS</span><span>SCORE</span></div>
-        {holes.map((hole) => (
-          <div className="round-editor-row" key={hole.number}>
+        {holes.map((hole) => {
+          const metrics = metricsByHole[hole.number];
+          const derivedBlowUp = scores[hole.number] != null && scores[hole.number] >= hole.par + 3;
+          return <div className="round-editor-row" key={hole.number}>
             <strong>{hole.number}</strong>
             <span>{hole.par}</span>
             <span>{hole.handicap}{handicapStrokesForHole(roundHandicap, hole, holes) ? ` · +${handicapStrokesForHole(roundHandicap, hole, holes)}` : ""}</span>
@@ -106,8 +120,16 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
               <strong>{scores[hole.number] ?? "—"}</strong>
               <button type="button" onClick={() => changeScore(hole.number, 1)} aria-label={`Increase hole ${hole.number} score`}><Plus size={16} /></button>
             </div>
-          </div>
-        ))}
+            {metrics && Object.keys(metrics).length ? (
+              <div className="round-hole-details">
+                {metrics.fairway ? <small>Fairway {metrics.fairway}</small> : null}
+                {metrics.putts !== undefined ? <small>{metrics.putts} {metrics.putts === 1 ? "putt" : "putts"}</small> : null}
+                {metrics.penaltyStrokes !== undefined ? <small>{metrics.penaltyStrokes} {metrics.penaltyStrokes === 1 ? "penalty" : "penalties"}</small> : null}
+                {metrics.blowUp || derivedBlowUp ? <small>Blow-up</small> : null}
+              </div>
+            ) : null}
+          </div>;
+        })}
       </section>
 
       <div className="round-edit-actions">

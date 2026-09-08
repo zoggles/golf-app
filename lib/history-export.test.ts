@@ -56,8 +56,9 @@ describe("buildHistoryCsv", () => {
 
     expect(lines).toHaveLength(4);
     expect(lines[0].split(",")).toContain("stroke_index");
+    expect(lines[0].split(",")).toEqual(expect.arrayContaining(["putts", "fairway", "penalty_strokes", "blow_up"]));
     expect(lines[1]).toBe(
-      "Nell Ray,2026-05-30,2026-05-30T17:30:00.000Z,completed,Test Links,\"Rochester, NY\",White,Full 18,65.2,109,1,4,300,5,5,1,,,14,12,2,,3,round-1",
+      "Nell Ray,2026-05-30,2026-05-30T17:30:00.000Z,completed,Test Links,\"Rochester, NY\",White,Full 18,65.2,109,1,4,300,5,5,1,,,,,,no,14,12,2,,3,round-1",
     );
     expect(lines[3]).toContain(",3,5,450,1,6,1,");
   });
@@ -102,7 +103,7 @@ describe("buildHistoryCsv", () => {
     const lines = rows(buildHistoryCsv([round({ status: "active", completedAt: undefined, scores: { 1: 5, 2: 3 } })], GOLFER));
 
     // Hole 3 has no score, no differential, and does not reach the round totals.
-    expect(lines[3]).toBe("Nell Ray,2026-05-30,2026-05-30T14:00:00.000Z,active,Test Links,\"Rochester, NY\",White,Full 18,65.2,109,3,5,450,1,,,,,8,7,1,,2,round-1");
+    expect(lines[3]).toBe("Nell Ray,2026-05-30,2026-05-30T14:00:00.000Z,active,Test Links,\"Rochester, NY\",White,Full 18,65.2,109,3,5,450,1,,,,,,,,,8,7,1,,2,round-1");
   });
 
   it("keeps a spreadsheet from reading a course name as a formula or a new column", () => {
@@ -157,8 +158,21 @@ describe("buildHistoryCsv", () => {
 
     expect(rows(csv)).toHaveLength(10);
     expect(rows(csv)[1]).toBe(
-      "Nell Ray,2026-05-30,2026-05-30T17:30:00.000Z,completed,Test Links,\"Rochester, NY\",White,Back 9,65.2,109,10,4,300,10,4,0,,,4,4,0,,1,round-1",
+      "Nell Ray,2026-05-30,2026-05-30T17:30:00.000Z,completed,Test Links,\"Rochester, NY\",White,Back 9,65.2,109,10,4,300,10,4,0,,,,,,no,4,4,0,,1,round-1",
     );
+  });
+
+  it("exports only optional stats that were actually tracked", () => {
+    const withStats = round({
+      events: [{ id: "metric", at: "2026-05-30T17:00:00.000Z", source: "voice", text: "two putts, fairway hit", hole: 1, metrics: { putts: 2, fairway: "hit", penaltyStrokes: 0 } }],
+    });
+    const csv = buildHistoryCsv([withStats], GOLFER);
+    const headers = rows(csv)[0].split(",");
+    const first = rows(csv)[1].split(",");
+    const shift = 1; // quoted location contains a comma
+    expect(first[headers.indexOf("putts") + shift]).toBe("2");
+    expect(first[headers.indexOf("fairway") + shift]).toBe("hit");
+    expect(first[headers.indexOf("penalty_strokes") + shift]).toBe("0");
   });
 });
 

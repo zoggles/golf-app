@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextHoleAfterVoiceUpdates, parseScoreCommand, parseScoreCommands, parseStartCommand } from "./voice-parser";
+import { nextHoleAfterVoiceUpdates, parseHoleMetricCommands, parseScoreCommand, parseScoreCommands, parseStartCommand } from "./voice-parser";
 import { GENESEE_VALLEY_SOUTH } from "./courses";
 
 describe("voice commands", () => {
@@ -43,5 +43,29 @@ describe("voice commands", () => {
 
   it("keeps the current hole selected when correcting a past hole", () => {
     expect(nextHoleAfterVoiceUpdates([1, 2, 17, 18], { 1: 6 }, 17, [{ hole: 2, strokes: 4 }])).toBe(17);
+  });
+
+  it("captures optional stats alongside a spoken score", () => {
+    expect(parseHoleMetricCommands("hole two, six strokes, two putts, hit the fairway, one penalty", GENESEE_VALLEY_SOUTH, 1)).toEqual([
+      { hole: 2, metrics: { putts: 2, penaltyStrokes: 1, fairway: "hit" } },
+    ]);
+  });
+
+  it("uses the current hole for natural metric-only updates", () => {
+    expect(parseHoleMetricCommands("missed the fairway and had no penalties", GENESEE_VALLEY_SOUTH, 7)).toEqual([
+      { hole: 7, metrics: { penaltyStrokes: 0, fairway: "miss" } },
+    ]);
+  });
+
+  it("never mistakes putts or penalties for the hole score", () => {
+    expect(parseScoreCommands("two putts and one penalty", GENESEE_VALLEY_SOUTH, 7)).toEqual([]);
+    expect(parseScoreCommands("hole 7, two putts", GENESEE_VALLEY_SOUTH, 1)).toEqual([]);
+  });
+
+  it("can update metrics on several named holes at once", () => {
+    expect(parseHoleMetricCommands("hole 3 was a fairway hit with 2 putts, hole 4 was a blow-up with 3 putts", GENESEE_VALLEY_SOUTH)).toEqual([
+      { hole: 3, metrics: { putts: 2, fairway: "hit" } },
+      { hole: 4, metrics: { putts: 3, blowUp: true } },
+    ]);
   });
 });

@@ -33,6 +33,12 @@ const eventSchema = z.object({
   text: z.string(),
   hole: z.number().int().optional(),
   strokes: z.number().int().optional(),
+  metrics: z.object({
+    putts: z.number().int().min(0).max(20).optional(),
+    penaltyStrokes: z.number().int().min(0).max(20).optional(),
+    fairway: z.enum(["hit", "miss"]).optional(),
+    blowUp: z.boolean().optional(),
+  }).optional(),
 });
 
 export const gamePayloadSchema = z.object({

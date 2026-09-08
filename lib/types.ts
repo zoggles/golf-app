@@ -24,6 +24,13 @@ export interface Course {
   holes: Hole[];
 }
 
+export interface HoleMetrics {
+  putts?: number;
+  penaltyStrokes?: number;
+  fairway?: "hit" | "miss";
+  blowUp?: boolean;
+}
+
 export interface RoundEvent {
   id: string;
   at: string;
@@ -31,6 +38,7 @@ export interface RoundEvent {
   text: string;
   hole?: number;
   strokes?: number;
+  metrics?: HoleMetrics;
 }
 
 export interface GolfRound {

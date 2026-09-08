@@ -1,6 +1,6 @@
 "use client";
 
-import type { Course, GolfData, GolfRound, RoundEvent, RoundSegment } from "./types";
+import type { Course, GolfData, GolfRound, HoleMetrics, RoundEvent, RoundSegment } from "./types";
 import { getCourse, getSegmentHoles } from "./courses";
 import { golferHeaders, readSelectedGolfer, subscribeToSelectedGolfer } from "./golfer-session";
 import { shiftRoundToDate } from "./round-date";
@@ -394,6 +394,27 @@ export function updateRoundScore(
     scores: { ...target.scores, [holeNumber]: strokes },
     events: [event, ...target.events],
   });
+}
+
+export function updateRoundHoleMetrics(
+  roundId: string,
+  holeNumber: number,
+  metrics: HoleMetrics,
+  source: "voice" | "manual",
+  rawText?: string,
+): void {
+  const data = readGolfData();
+  const target = data.rounds.find((round) => round.id === roundId);
+  if (!target || Object.keys(metrics).length === 0) return;
+  const event: RoundEvent = {
+    id: createId("event"),
+    at: new Date().toISOString(),
+    source,
+    text: rawText ?? `Updated optional stats for hole ${holeNumber}`,
+    hole: holeNumber,
+    metrics,
+  };
+  saveRound(data, { ...target, events: [event, ...target.events] });
 }
 
 export function completeRound(roundId: string): void {

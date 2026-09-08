@@ -14,11 +14,11 @@ import {
   Trash,
 } from "@phosphor-icons/react";
 import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/courses";
-import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundScore } from "@/lib/storage";
-import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, summarizeRound } from "@/lib/metrics";
-import { nextHoleAfterVoiceUpdates, parseScoreCommands, parseStartCommand, type ScoreCommand } from "@/lib/voice-parser";
+import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundHoleMetrics, updateRoundScore } from "@/lib/storage";
+import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, summarizeRound } from "@/lib/metrics";
+import { nextHoleAfterVoiceUpdates, parseHoleMetricCommands, parseScoreCommands, parseStartCommand, type HoleMetricCommand, type ScoreCommand } from "@/lib/voice-parser";
 import { COMMON_TEES, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeOptionLabel } from "@/lib/tee-selection";
-import type { Course, RoundSegment } from "@/lib/types";
+import type { Course, HoleMetrics, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { ScorecardPhotoImport } from "./scorecard-photo-import";
 import { VoiceControl } from "./voice-control";
@@ -261,6 +261,9 @@ function ActiveRound({ roundId }: { roundId: string }) {
   const currentHoleStrokes = handicapStrokesForHole(roundHandicap, currentHole, holes);
   const completedHoles = Object.keys(round.scores).length;
   const allHolesScored = completedHoles === holes.length;
+  const metricsByHole = holeMetricsByNumber(round);
+  const currentMetrics = metricsByHole[currentHole.number] ?? {};
+  const currentMetricCount = Object.values(currentMetrics).filter((value) => value !== undefined).length;
 
   function applyScore(holeNumber: number, strokes: number, source: "voice" | "manual", rawText?: string) {
     const validHole = holes.some((holeItem) => holeItem.number === holeNumber);
@@ -275,8 +278,13 @@ function ActiveRound({ roundId }: { roundId: string }) {
     if (nextHole) selectHole(nextHole.number);
   }
 
-  function applyVoiceUpdates(updates: ScoreCommand[], text: string, reply?: string) {
+  function saveMetric(hole: number, metrics: HoleMetrics, source: "voice" | "manual", text?: string) {
+    updateRoundHoleMetrics(round!.id, hole, metrics, source, text);
+  }
+
+  function applyVoiceUpdates(updates: ScoreCommand[], metricUpdates: HoleMetricCommand[], text: string, reply?: string) {
     for (const update of updates) updateRoundScore(round!.id, update.hole, update.strokes, "voice", text);
+    for (const update of metricUpdates) saveMetric(update.hole, update.metrics, "voice", text);
     const nextHole = nextHoleAfterVoiceUpdates(
       holes.map((hole) => hole.number),
       round!.scores,
@@ -284,13 +292,15 @@ function ActiveRound({ roundId }: { roundId: string }) {
       updates,
     );
     if (nextHole !== selectedHole) selectHole(nextHole);
-    setFeedback(reply || `Updated ${updates.map((update) => `hole ${update.hole} to ${update.strokes}`).join(" and ")}.`);
+    const changedHoles = [...new Set([...updates.map((update) => update.hole), ...metricUpdates.map((update) => update.hole)])];
+    setFeedback(reply || `Saved ${changedHoles.map((hole) => `hole ${hole}`).join(" and ")}.`);
   }
 
   async function handleVoice(text: string) {
     const explicitUpdates = parseScoreCommands(text, course, selectedHole).filter((update) => holes.some((hole) => hole.number === update.hole));
-    if (explicitUpdates.length) {
-      applyVoiceUpdates(explicitUpdates, text);
+    const explicitMetrics = parseHoleMetricCommands(text, course, selectedHole).filter((update) => holes.some((hole) => hole.number === update.hole));
+    if (explicitUpdates.length || explicitMetrics.length) {
+      applyVoiceUpdates(explicitUpdates, explicitMetrics, text);
       return;
     }
 
@@ -306,18 +316,28 @@ function ActiveRound({ roundId }: { roundId: string }) {
           scores: round!.scores,
         }),
       });
-      const result = (await response.json()) as { updates?: Array<{ hole: number; strokes: number }>; reply?: string; error?: string };
+      const result = (await response.json()) as {
+        updates?: Array<{ hole: number; strokes?: number; metrics?: HoleMetrics }>;
+        reply?: string;
+        error?: string;
+      };
       if (!response.ok) throw new Error(result.error || "I couldn’t understand that update.");
       const updates = (result.updates ?? []).filter((update) => holes.some((hole) => hole.number === update.hole));
       if (!updates.length) {
         setFeedback(result.reply || "Which hole and score should I update?");
         return;
       }
-      applyVoiceUpdates(updates, text, result.reply);
+      applyVoiceUpdates(
+        updates.flatMap((update) => update.strokes === undefined ? [] : [{ hole: update.hole, strokes: update.strokes }]),
+        updates.flatMap((update) => update.metrics ? [{ hole: update.hole, metrics: update.metrics }] : []),
+        text,
+        result.reply,
+      );
     } catch (cause) {
       const fallback = parseScoreCommands(text, course, selectedHole).filter((update) => holes.some((hole) => hole.number === update.hole));
-      if (fallback.length) {
-        applyVoiceUpdates(fallback, text);
+      const metricFallback = parseHoleMetricCommands(text, course, selectedHole).filter((update) => holes.some((hole) => hole.number === update.hole));
+      if (fallback.length || metricFallback.length) {
+        applyVoiceUpdates(fallback, metricFallback, text);
       } else setFeedback(cause instanceof Error ? cause.message : "I couldn’t understand that update.");
     } finally {
       setActivity(null);
@@ -371,11 +391,29 @@ function ActiveRound({ roundId }: { roundId: string }) {
         <button className="primary-button full-width" type="button" onClick={() => applyScore(currentHole.number, manualScore, "manual")}>
           Save hole {currentHole.number} <Check size={19} weight="bold" />
         </button>
+        <details className="optional-stats" open={currentMetricCount > 0}>
+          <summary><span>Track more</span><small>Optional{currentMetricCount ? ` · ${currentMetricCount} saved` : ""}</small></summary>
+          <div className="optional-stats-grid">
+            <div className="optional-stat-row">
+              <span><strong>Fairway</strong><small>{currentHole.par === 3 ? "Not used on par 3s" : "Tee shot"}</small></span>
+              <div className="choice-pills">
+                <button type="button" disabled={currentHole.par === 3} className={currentMetrics.fairway === "hit" ? "active" : ""} onClick={() => { saveMetric(currentHole.number, { fairway: "hit" }, "manual"); setFeedback(`Hole ${currentHole.number} fairway hit saved.`); }}>Hit</button>
+                <button type="button" disabled={currentHole.par === 3} className={currentMetrics.fairway === "miss" ? "active" : ""} onClick={() => { saveMetric(currentHole.number, { fairway: "miss" }, "manual"); setFeedback(`Hole ${currentHole.number} fairway miss saved.`); }}>Miss</button>
+              </div>
+            </div>
+            <MetricCounter label="Putts" value={currentMetrics.putts} onChange={(putts) => { saveMetric(currentHole.number, { putts }, "manual"); setFeedback(`Hole ${currentHole.number} putts saved at ${putts}.`); }} />
+            <MetricCounter label="Penalties" value={currentMetrics.penaltyStrokes} onChange={(penaltyStrokes) => { saveMetric(currentHole.number, { penaltyStrokes }, "manual"); setFeedback(`Hole ${currentHole.number} penalties saved at ${penaltyStrokes}.`); }} />
+            <div className="optional-stat-row">
+              <span><strong>Blow-up hole</strong><small>Triple bogey or worse</small></span>
+              <button type="button" className={currentMetrics.blowUp ? "metric-toggle active" : "metric-toggle"} aria-pressed={Boolean(currentMetrics.blowUp)} onClick={() => { saveMetric(currentHole.number, { blowUp: !currentMetrics.blowUp }, "manual"); setFeedback(`Hole ${currentHole.number} blow-up marker ${currentMetrics.blowUp ? "removed" : "saved"}.`); }}>{currentMetrics.blowUp ? "Marked" : "Mark"}</button>
+            </div>
+          </div>
+        </details>
       </section>
 
       <section className="voice-score-card surface-card">
-        <div className="section-heading tight"><div><p className="eyebrow">HANDS-FREE UPDATE</p><h2>Tell me your score</h2></div></div>
-        <VoiceControl onSubmit={handleVoice} placeholder="e.g. Change hole 3 to 5 strokes" example='Try “Change hole 3 to 5, and hole 4 was a bogey”' activity={activity} compact />
+        <div className="section-heading tight"><div><p className="eyebrow">HANDS-FREE UPDATE</p><h2>Tell me what happened</h2></div></div>
+        <VoiceControl onSubmit={handleVoice} placeholder="e.g. Hole 3: 6 strokes, 2 putts, fairway hit" example='Try “Hole 3: 6 strokes, 2 putts, fairway hit”' activity={activity} compact />
         <div className="feedback-line"><Sparkle size={15} weight="fill" /> {feedback}</div>
       </section>
 
@@ -389,6 +427,7 @@ function ActiveRound({ roundId }: { roundId: string }) {
                 <span>{holeItem.number}</span>
                 <strong>{score ?? "—"}</strong>
                 <small>PAR {holeItem.par} · HCP {holeItem.handicap}</small>
+                {metricsByHole[holeItem.number] && Object.keys(metricsByHole[holeItem.number]).length ? <small className="hole-tracked">Stats tracked</small> : null}
                 {handicapStrokesForHole(roundHandicap, holeItem, holes) ? <small className="hole-stroke">+{handicapStrokesForHole(roundHandicap, holeItem, holes)} stroke</small> : null}
               </button>
             );
@@ -404,6 +443,19 @@ function ActiveRound({ roundId }: { roundId: string }) {
       </section>
       {!allHolesScored ? <p className="completion-note">Score {holes.length - completedHoles} more {holes.length - completedHoles === 1 ? "hole" : "holes"} to complete this round.</p> : null}
     </>
+  );
+}
+
+function MetricCounter({ label, value, onChange }: { label: string; value?: number; onChange: (value: number) => void }) {
+  return (
+    <div className="optional-stat-row">
+      <span><strong>{label}</strong><small>{value === undefined ? "Not tracked" : "Saved"}</small></span>
+      <div className="metric-counter">
+        <button type="button" onClick={() => onChange(Math.max(0, (value ?? 0) - 1))} aria-label={`Decrease ${label.toLowerCase()}`}><Minus size={15} /></button>
+        <strong>{value ?? "—"}</strong>
+        <button type="button" onClick={() => onChange(Math.min(20, (value ?? 0) + 1))} aria-label={`Increase ${label.toLowerCase()}`}><Plus size={15} /></button>
+      </div>
+    </div>
   );
 }
 

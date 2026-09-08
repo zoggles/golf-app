@@ -5,7 +5,7 @@ import { ArrowRight, CaretRight, FileArrowDown, FlagPennant, Gauge, Medal, Trend
 import { useGolfData } from "@/hooks/use-golf-data";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { buildHistoryCsv, historyExportFilename } from "@/lib/history-export";
-import { estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound } from "@/lib/metrics";
+import { buildRoundInsights, estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound, trackedRoundMetrics } from "@/lib/metrics";
 import type { GolfRound } from "@/lib/types";
 
 export function ProgressPage() {
@@ -20,6 +20,7 @@ export function ProgressPage() {
     .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
   const handicap = estimateHandicap(completed);
   const roundsById = new Map(completed.map((round) => [round.id, round]));
+  const insightsByRound = buildRoundInsights(completed);
   const average = scoringAverage(completed);
   const best = [...summaries].sort((a, b) => a.toPar - b.toPar)[0];
   const averageToPar = summaries.length
@@ -83,15 +84,26 @@ export function ProgressPage() {
           </section>
 
           <section className="history-section">
-            <div className="section-heading"><div><h2>Round log</h2></div></div>
+            <div className="section-heading"><div><h2>Round log</h2><p>Strengths and focus areas use only the stats you tracked, compared with your own rounds.</p></div></div>
             <div className="round-list">
               {summaries.map((round) => {
                 const savedRound = roundsById.get(round.id);
                 const roundHandicap = savedRound ? estimateRoundHandicap(handicap, savedRound.course, savedRound.segment) : null;
+                const insights = insightsByRound.get(round.id) ?? [];
+                const facts = savedRound ? metricFacts(savedRound).slice(0, insights.length ? 0 : 2) : [];
                 return (
                   <Link key={round.id} href={`/rounds/${round.id}`} className="round-list-item" aria-label={`Open ${round.courseName} round from ${new Date(round.date).toLocaleDateString()}`}>
                     <span className="round-date"><strong>{new Date(round.date).getDate()}</strong><small>{new Date(round.date).toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</small></span>
-                    <span className="round-info"><strong>{round.courseName}</strong><small>{round.segment} · {round.holesPlayed} holes · Round HCP {roundHandicap ?? "—"}</small></span>
+                    <span className="round-info">
+                      <strong>{round.courseName}</strong>
+                      <small>{round.segment} · {round.holesPlayed} holes · Round HCP {roundHandicap ?? "—"}</small>
+                      {insights.length || facts.length ? (
+                        <span className="round-insights">
+                          {insights.map((insight) => <small key={`${insight.tone}-${insight.text}`} className={`round-insight ${insight.tone}`}>{insight.tone === "strength" ? "Best" : "Focus"} · {insight.text}</small>)}
+                          {facts.map((fact) => <small key={fact} className="round-insight neutral">Tracked · {fact}</small>)}
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="round-score"><strong>{round.total}</strong><small>{formatToPar(round.toPar)}</small></span>
                     <CaretRight className="round-open-icon" size={18} />
                   </Link>
@@ -104,6 +116,16 @@ export function ProgressPage() {
       <p className="metric-disclaimer">Handicap is an informal trend estimate, not an official USGA Handicap Index.</p>
     </div>
   );
+}
+
+function metricFacts(round: GolfRound): string[] {
+  const tracked = trackedRoundMetrics(round);
+  const facts: string[] = [];
+  if (tracked.fairwaysTracked) facts.push(`${Math.round((tracked.fairwaysHit / tracked.fairwaysTracked) * 100)}% fairways`);
+  if (tracked.puttsHoles) facts.push(`${tracked.puttsTotal} putts over ${tracked.puttsHoles} ${tracked.puttsHoles === 1 ? "hole" : "holes"}`);
+  if (tracked.penaltyHoles) facts.push(`${tracked.penaltyStrokes} penalty ${tracked.penaltyStrokes === 1 ? "stroke" : "strokes"}`);
+  if (tracked.scoredHoles) facts.push(`${tracked.blowUpHoles} blow-up ${tracked.blowUpHoles === 1 ? "hole" : "holes"}`);
+  return facts;
 }
 
 /**

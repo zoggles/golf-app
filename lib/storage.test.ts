@@ -136,8 +136,12 @@ describe("golf persistence", () => {
 
     // Scores logged while an earlier write is still in flight must not be lost.
     for (let hole = 1; hole <= 5; hole += 1) storage.updateRoundScore(round.id, hole, 4, "voice");
+    storage.updateRoundHoleMetrics(round.id, 1, { putts: 2, fairway: "hit", penaltyStrokes: 0 }, "voice", "two putts, fairway hit");
     await settle();
     expect(Object.keys(api.games.get(round.id)?.scores as object)).toHaveLength(5);
+    expect(api.games.get(round.id)?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ hole: 1, metrics: { putts: 2, fairway: "hit", penaltyStrokes: 0 } }),
+    ]));
 
     api.setOnline(false);
     for (let hole = 6; hole <= 9; hole += 1) storage.updateRoundScore(round.id, hole, 5, "manual");
