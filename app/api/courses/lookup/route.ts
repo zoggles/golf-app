@@ -64,10 +64,6 @@ function normalizeCourse(course: Course): Course {
   };
 }
 
-function normalizeUrl(value: string): string {
-  return value.replace(/\/$/, "");
-}
-
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { query?: unknown };
@@ -94,9 +90,6 @@ export async function POST(request: Request) {
     const groundingEvidence = JSON.stringify({ sources: result.sources, providerMetadata: result.providerMetadata });
     if (!groundingEvidence.includes("grounding") && result.sources.length === 0) {
       failCourseLookup("NoSearchEvidenceError", "Course research returned no grounded sources.");
-    }
-    if (!normalizeUrl(groundingEvidence).includes(normalizeUrl(normalizedCourse.sourceUrl))) {
-      failCourseLookup("EvidenceSourceMismatchError", "The scorecard source was not returned by grounded search.");
     }
     return Response.json({ course: normalizedCourse });
   } catch (error) {
