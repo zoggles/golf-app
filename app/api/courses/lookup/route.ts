@@ -59,6 +59,7 @@ export async function POST(request: Request) {
 
     const research = await generateText({
       model: "google/gemini-2.5-flash",
+      maxRetries: 1,
       maxOutputTokens: 7000,
       stopWhen: isStepCount(3),
       system: `You research golf courses for a live scorecard using Google Search grounding. Always search before answering. Resolve speech-to-text errors, phonetic spellings, and small misspellings by combining the requested name with its city/state; a near-match at the exact requested location is more likely than an exact-name match in another city. Search both the user's wording and promising corrected spellings. Prefer an official course scorecard or course website, then reputable golf directories that publish a complete hole-by-hole scorecard. Gather the exact published course name, location, tee name, full-course rating, slope, and every hole's number, par, yardage, and stroke index. If the course has 18 holes, collect all 18 even if the user only plans to play nine. Use the requested tee, or the course's middle/white tee when none is specified. Never estimate factual scorecard data and never substitute another course or tee. Provide a compact evidence report with source URLs; it does not need to be JSON.`,
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
 
     const structured = await generateText({
       model: "google/gemini-2.5-flash-lite",
+      maxRetries: 1,
       maxOutputTokens: 8000,
       output: Output.object({ schema: courseSchema }),
       system: `Convert grounded golf-course research into the supplied scorecard structure. Use only factual course data present in the evidence. Use the exact corrected published course name and selected tee. Rating, slope, par, yards, and all holes must describe the same tee and full course. Preserve published par, yardage, and stroke index exactly. You may create concise suggestedClub and strategy values from each hole's par and yardage. Use a stable lowercase id containing course and tee. sourceUrl must be one of the grounded URLs in the evidence and must support the scorecard.`,
@@ -97,6 +99,12 @@ export async function POST(request: Request) {
       return Response.json(
         { error: "Live course research is ready, but this Vercel team must add a payment method to unlock its AI Gateway credits.", setupRequired: true },
         { status: 503 },
+      );
+    }
+    if (/rate-limit|rate limit|rate_limit/i.test(String(error))) {
+      return Response.json(
+        { error: "Live course research is temporarily rate-limited. Wait a minute and try again—the course details you entered are fine." },
+        { status: 429 },
       );
     }
     return Response.json(
