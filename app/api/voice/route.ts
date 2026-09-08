@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     if (audio.size > 15 * 1024 * 1024) return Response.json({ error: "That recording is too large. Try a shorter update." }, { status: 413 });
 
     const result = await transcribe({
-      model: gateway.transcriptionModel("fish-audio/transcribe-1-free"),
+      model: gateway.transcriptionModel("openai/whisper-1"),
       audio: new Uint8Array(await audio.arrayBuffer()),
     });
 
