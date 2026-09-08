@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   CaretLeft,
@@ -47,6 +47,10 @@ function RoundStarter() {
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [courseConfirmed, setCourseConfirmed] = useState(true);
+  const lookupAbortRef = useRef<AbortController | null>(null);
+  const lookupSequenceRef = useRef(0);
+
+  useEffect(() => () => lookupAbortRef.current?.abort(), []);
 
   const availableCourses = useMemo(() => {
     const byId = new Map<string, Course>([[GENESEE_VALLEY_SOUTH.id, GENESEE_VALLEY_SOUTH]]);
@@ -67,6 +71,10 @@ function RoundStarter() {
 
   async function researchCourse(query: string, status: string): Promise<Course | null> {
     const previousTee = selectedCourse.tee;
+    lookupAbortRef.current?.abort();
+    const controller = new AbortController();
+    const lookupSequence = ++lookupSequenceRef.current;
+    lookupAbortRef.current = controller;
     setCourseConfirmed(false);
     setIsLookingUp(true);
     setLookupError(null);
@@ -77,8 +85,10 @@ function RoundStarter() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
+        signal: controller.signal,
       });
       const result = (await response.json()) as { course?: Course; error?: string };
+      if (lookupSequence !== lookupSequenceRef.current) return null;
       if (!response.ok || !result.course) throw new Error(result.error || "Course lookup failed.");
       saveCourse(result.course);
       setSelectedCourse(result.course);
@@ -87,14 +97,26 @@ function RoundStarter() {
       if (result.course.holes.length === 9) setSegment("front9");
       return result.course;
     } catch (cause) {
+      if (controller.signal.aborted || lookupSequence !== lookupSequenceRef.current) return null;
       setTeeChoice(previousTee);
       setCourseConfirmed(true);
       setLookupError(cause instanceof Error ? cause.message : "I couldn’t verify that course and tee.");
       return null;
     } finally {
-      setIsLookingUp(false);
-      setActivity(null);
+      if (lookupSequence === lookupSequenceRef.current) {
+        lookupAbortRef.current = null;
+        setIsLookingUp(false);
+        setActivity(null);
+      }
     }
+  }
+
+  function cancelPendingLookup() {
+    lookupAbortRef.current?.abort();
+    lookupAbortRef.current = null;
+    lookupSequenceRef.current += 1;
+    setIsLookingUp(false);
+    setActivity(null);
   }
 
   async function chooseTee(course: Course, tee: string) {
@@ -105,6 +127,7 @@ function RoundStarter() {
       samePhysicalCourse(candidate, course) && normalizeTee(candidate.tee) === normalizeTee(tee),
     );
     if (savedTee) {
+      cancelPendingLookup();
       setSelectedCourse(savedTee);
       setTeeChoice(savedTee.tee);
       setCourseConfirmed(true);
@@ -149,6 +172,7 @@ function RoundStarter() {
   function chooseCourse(courseId: string) {
     const course = availableCourses.find((item) => item.id === courseId);
     if (!course) return;
+    cancelPendingLookup();
     setSelectedCourse(course);
     setTeeChoice(course.tee);
     setCourseConfirmed(true);
@@ -210,7 +234,7 @@ function RoundStarter() {
             className="course-select"
             value={teeChoice}
             onChange={(event) => void chooseTee(selectedCourse, event.target.value)}
-            disabled={isLookingUp}
+            aria-busy={isLookingUp}
           >
             {teeOptions.map((tee) => <option key={tee} value={tee}>{teeOptionLabel(tee)}</option>)}
           </select>
