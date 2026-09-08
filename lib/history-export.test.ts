@@ -178,10 +178,10 @@ describe("buildHistoryCsv", () => {
 
 describe("historyExportFilename", () => {
   it("stamps the file with the day it was exported", () => {
-    expect(historyExportFilename(GOLFER, new Date(2026, 8, 8))).toBe("fairway-log-nell-ray-history-2026-09-08.csv");
+    expect(historyExportFilename(GOLFER, new Date(2026, 8, 8))).toBe("caddy-stack-nell-ray-history-2026-09-08.csv");
   });
 
   it("still names a file when the golfer's name has nothing to slug", () => {
-    expect(historyExportFilename("  ", new Date(2026, 8, 8))).toBe("fairway-log-golfer-history-2026-09-08.csv");
+    expect(historyExportFilename("  ", new Date(2026, 8, 8))).toBe("caddy-stack-golfer-history-2026-09-08.csv");
   });
 });

@@ -143,5 +143,5 @@ export function historyExportFilename(golferName: string, now: Date): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   // Two golfers exporting on the same day should not produce the same file.
-  return `fairway-log-${golfer || "golfer"}-history-${date}.csv`;
+  return `caddy-stack-${golfer || "golfer"}-history-${date}.csv`;
 }

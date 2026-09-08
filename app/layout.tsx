@@ -7,9 +7,9 @@ const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Fairway Log",
+  title: "Caddy Stack",
   description: "A voice-friendly golf round tracker and personal performance dashboard.",
-  applicationName: "Fairway Log",
+  applicationName: "Caddy Stack",
 };
 
 export const viewport: Viewport = {

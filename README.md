@@ -1,4 +1,4 @@
-# Fairway Log
+# Caddy Stack
 
 A mobile-first, voice-friendly golf round tracker. Golfers, rounds, and course scorecards live in Supabase, with a local mirror so scoring keeps working when the course has no signal.
 
@@ -96,7 +96,7 @@ exports.
 ## Exporting the history
 
 `Progress` has an **Export round history** button that downloads the selected
-golfer's rounds as `fairway-log-<golfer>-history-<date>.csv`, built in the
+golfer's rounds as `caddy-stack-<golfer>-history-<date>.csv`, built in the
 browser from the local mirror so it works without signal.
 
 The file is one row per hole, with the round's date, course, tee, segment,

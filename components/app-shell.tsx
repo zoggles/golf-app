@@ -21,9 +21,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-frame">
       <header className="topbar">
-        <Link className="brand" href="/play" aria-label="Fairway Log home">
+        <Link className="brand" href="/play" aria-label="Caddy Stack home">
           <span className="brand-mark"><FlagPennant size={18} weight="fill" /></span>
-          <span>Fairway Log</span>
+          <span>Caddy Stack</span>
         </Link>
         <GolferSwitcher />
       </header>
