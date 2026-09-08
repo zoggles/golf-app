@@ -75,14 +75,13 @@ export async function POST(request: Request) {
     if (!query) return Response.json({ error: "Tell me the course name and location." }, { status: 400 });
 
     const result = await generateText({
-      model: "google/gemini-2.5-flash-lite",
+      model: "google/gemini-2.5-flash",
       maxOutputTokens: 8000,
       system: `You research golf courses for a live scorecard using Google Search grounding. Always search before answering. Identify the exact course from the user's wording. Prefer an official course scorecard or course website, then reputable golf directories. Return the complete 9- or 18-hole scorecard for one named tee; use White/Middle tees unless the user specifies another tee. Copy every par, yardage, handicap, rating, and slope from a retrieved source—never estimate factual scorecard data. If sources disagree, prefer the official scorecard. Suggested clubs and strategy are general, conservative guidance inferred from yardage. The id must be a stable lowercase slug including course and tee. sourceUrl must exactly match one of your grounded source URLs and directly support the scorecard. If the exact course cannot be confidently identified with a complete scorecard, do not substitute another course. Return only JSON matching the supplied schema.`,
       prompt: `Find and structure this golf course and tee for a scorecard: ${query}\n\nReturn only a JSON object matching this schema:\n${JSON.stringify(z.toJSONSchema(courseSchema))}`,
       tools: {
         google_search: google.tools.googleSearch({}),
       },
-      toolChoice: { type: "tool", toolName: "google_search" },
     });
 
     const structuredCourse = parseCourseCandidates([
