@@ -18,9 +18,10 @@ export async function POST(request: Request) {
     return Response.json({ transcript: result.text.trim() });
   } catch (error) {
     console.error("Voice transcription failed", error);
+    const diagnosticCode = error instanceof Error ? error.name : "UnknownError";
     if (String(error).toLowerCase().includes("valid credit card")) {
       return Response.json({ error: "Cloud transcription is awaiting Vercel billing setup.", setupRequired: true }, { status: 503 });
     }
-    return Response.json({ error: "I couldn’t transcribe that recording. Please try again or type the update." }, { status: 502 });
+    return Response.json({ error: "I couldn’t transcribe that recording. Please try again or type the update.", diagnosticCode }, { status: 502 });
   }
 }

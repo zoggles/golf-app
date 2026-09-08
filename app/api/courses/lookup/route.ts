@@ -52,6 +52,7 @@ export async function POST(request: Request) {
     return Response.json({ course: parseAiJson(text, courseSchema) });
   } catch (error) {
     console.error("Course lookup failed", error);
+    const diagnosticCode = error instanceof Error ? error.name : "UnknownError";
     if (String(error).toLowerCase().includes("valid credit card")) {
       return Response.json(
         { error: "Live course research is ready, but this Vercel team must add a payment method to unlock its AI Gateway credits.", setupRequired: true },
@@ -59,7 +60,7 @@ export async function POST(request: Request) {
       );
     }
     return Response.json(
-      { error: "I couldn’t verify a complete scorecard for that course. Add the city/state or a more exact course name and try again." },
+      { error: "I couldn’t verify a complete scorecard for that course. Add the city/state or a more exact course name and try again.", diagnosticCode },
       { status: 502 },
     );
   }

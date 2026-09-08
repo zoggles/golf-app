@@ -30,9 +30,10 @@ export async function POST(request: Request) {
     return Response.json(parseAiJson(resultText, commandSchema));
   } catch (error) {
     console.error("Round command failed", error);
+    const diagnosticCode = error instanceof Error ? error.name : "UnknownError";
     if (String(error).toLowerCase().includes("valid credit card")) {
       return Response.json({ error: "AI interpretation is awaiting Vercel billing setup.", setupRequired: true }, { status: 503 });
     }
-    return Response.json({ error: "I couldn’t understand that update. Try naming the hole and score." }, { status: 502 });
+    return Response.json({ error: "I couldn’t understand that update. Try naming the hole and score.", diagnosticCode }, { status: 502 });
   }
 }
