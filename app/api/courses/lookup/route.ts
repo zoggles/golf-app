@@ -1,27 +1,26 @@
 import { google } from "@ai-sdk/google";
-import { generateText } from "ai";
+import { generateText, isStepCount, Output } from "ai";
 import { z } from "zod";
-import { parseAiJson } from "@/lib/parse-ai-json";
 
 export const maxDuration = 120;
 
 const holeSchema = z.object({
-  number: z.number().int().min(1).max(18),
-  par: z.number().int().min(3).max(6),
-  yards: z.number().int().min(50).max(800),
-  handicap: z.number().int().min(1).max(18),
-  suggestedClub: z.string().min(2),
-  strategy: z.string().min(8),
+  number: z.number().int().min(1).max(18).describe("Hole number in playing order"),
+  par: z.number().int().min(3).max(6).describe("Published par for this hole and selected tee/player rating"),
+  yards: z.number().int().min(50).max(800).describe("Published yardage from the selected tee"),
+  handicap: z.number().int().min(1).max(18).describe("Published stroke index or hole handicap"),
+  suggestedClub: z.string().min(2).describe("Practical starting club based on this tee's yardage"),
+  strategy: z.string().min(8).describe("Brief hole strategy based on this tee's yardage"),
 });
 
 const courseSchema = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),
-  name: z.string().min(3),
-  shortName: z.string().min(3),
-  location: z.string().min(2),
-  tee: z.string().min(2),
-  rating: z.number().min(25).max(85),
-  slope: z.number().int().min(55).max(155),
+  name: z.string().min(3).describe("Exact published course name, correcting phonetic or spelling errors in the request"),
+  shortName: z.string().min(3).describe("Concise recognizable course name"),
+  location: z.string().min(2).describe("Published city and state/province"),
+  tee: z.string().min(2).describe("Exact published name or color of the selected tee"),
+  rating: z.number().min(25).max(85).describe("Published full-course rating for the selected tee"),
+  slope: z.number().int().min(55).max(155).describe("Published full-course slope for the selected tee"),
   par: z.number().int().min(27).max(80),
   yards: z.number().int().min(1200).max(8500),
   sourceUrl: z.string().url(),
@@ -34,18 +33,6 @@ function failCourseLookup(name: string, message: string): never {
   const error = new Error(message);
   error.name = name;
   throw error;
-}
-
-function parseCourseCandidates(candidates: string[]): Course | null {
-  for (const candidate of candidates) {
-    if (!candidate.trim()) continue;
-    try {
-      return parseAiJson(candidate, courseSchema);
-    } catch {
-      // A research step may contain prose or a tool call before the final JSON.
-    }
-  }
-  return null;
 }
 
 function normalizeCourse(course: Course): Course {
@@ -71,19 +58,18 @@ export async function POST(request: Request) {
     if (!query) return Response.json({ error: "Tell me the course name and location." }, { status: 400 });
 
     const result = await generateText({
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-3.8-flash",
       maxOutputTokens: 8000,
-      system: `You research golf courses for a live scorecard using Google Search grounding. Always search before answering. Identify the exact course from the user's wording. Prefer an official course scorecard or course website, then reputable golf directories. If the course has 18 holes, always return its complete 18-hole scorecard even when the requested round is only the front or back nine; return 9 holes only when the course itself has exactly 9 holes. Use White/Middle tees only when the user does not specify a tee. When a tee is specified, use that exact published tee and never silently substitute White/Middle. Treat women's or ladies' tee requests as the course's adult forward tee; when the user says Forward, return the actual published name or color of that tee. Copy every par, yardage, handicap, rating, and slope from a retrieved source—never estimate factual scorecard data. Rating, slope, par, and yards must describe the selected tee's full scorecard. If sources disagree, prefer the official scorecard. Recalculate every suggested club and strategy from the selected tee's hole yardage; never copy advice from another tee profile. The id must be a stable lowercase slug including course and tee. sourceUrl must exactly match one of your grounded source URLs and directly support the scorecard. If the exact course and requested tee cannot be confidently identified with a complete scorecard, do not substitute another course or tee. Return only JSON matching the supplied schema.`,
-      prompt: `First search for an official scorecard PDF or official course-owner scorecard using this query: ${query} official scorecard PDF tee yardages rating slope. Use a reputable directory only when no official scorecard is available. Then structure the requested course and tee.\n\nReturn only a JSON object matching this schema:\n${JSON.stringify(z.toJSONSchema(courseSchema))}`,
+      output: Output.object({ schema: courseSchema }),
+      stopWhen: isStepCount(4),
+      system: `You research golf courses for a live scorecard using Google Search grounding. Always search before answering. Resolve speech-to-text errors, phonetic spellings, and small misspellings by combining the requested name with its city/state; for example, a near-match at the exact requested location is more likely than an exact-name match in another city. Search both the user's wording and promising corrected spellings. Prefer an official course scorecard or course website, then reputable golf directories that publish a complete hole-by-hole scorecard. If the course has 18 holes, always return its complete 18-hole scorecard even when the requested round is only the front or back nine; return 9 holes only when the course itself has exactly 9 holes. Use White/Middle tees only when the user does not specify a tee. When a tee is specified, use that exact published tee and never silently substitute White/Middle. Treat women's or ladies' tee requests as a request for the course's adult forward tee; return the actual published name or color. Copy every par, yardage, handicap, rating, and slope from retrieved sources—never estimate factual scorecard data. Rating, slope, par, and yards must describe the selected tee's full scorecard. If sources disagree, prefer the official scorecard. Recalculate suggested clubs and strategy from the selected tee's yardages. The id must be a stable lowercase slug including course and tee. sourceUrl must exactly match one of your grounded source URLs and directly support the scorecard. Never substitute a different course or tee when the evidence is insufficient.`,
+      prompt: `Find the intended golf course and its complete published scorecard for: "${query}". Start with the full name-and-location phrase. If there is no exact result, search likely phonetic or spelling variants while keeping the requested city/state fixed. Search for an official scorecard PDF or official course page first, then a reputable complete scorecard directory. Return the requested tee, or the course's middle/white tee when no tee was requested.`,
       tools: {
         google_search: google.tools.googleSearch({}),
       },
     });
 
-    const structuredCourse = parseCourseCandidates([
-      result.text,
-      ...result.steps.toReversed().map((step) => step.text),
-    ]);
+    const structuredCourse = result.output;
     if (!structuredCourse) failCourseLookup("CourseStructureError", "Course research could not be converted to a complete scorecard.");
 
     const normalizedCourse = normalizeCourse(structuredCourse);

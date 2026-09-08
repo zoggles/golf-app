@@ -17,7 +17,7 @@ import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/cours
 import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundScore } from "@/lib/storage";
 import { formatToPar, summarizeRound } from "@/lib/metrics";
 import { nextHoleAfterVoiceUpdates, parseScoreCommands, parseStartCommand, type ScoreCommand } from "@/lib/voice-parser";
-import { COMMON_TEES, extractTeeMention, normalizeTee, samePhysicalCourse } from "@/lib/tee-selection";
+import { COMMON_TEES, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeDescription, teeOptionLabel } from "@/lib/tee-selection";
 import type { Course, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { VoiceControl } from "./voice-control";
@@ -119,11 +119,8 @@ function RoundStarter() {
     setLookupError(null);
     setMessage(null);
     setActivity("Checking your saved courses…");
-    const normalizedText = text.toLowerCase();
     const requestedTee = extractTeeMention(text);
-    const savedCourse = availableCourses.find((course) =>
-      normalizedText.includes(course.shortName.toLowerCase()) || normalizedText.includes(course.name.toLowerCase()),
-    );
+    const savedCourse = availableCourses.find((course) => courseMatchesPhrase(course, text));
     if (command.courseId === GENESEE_VALLEY_SOUTH.id || savedCourse) {
       const course = savedCourse ?? GENESEE_VALLEY_SOUTH;
       if (requestedTee && normalizeTee(requestedTee) !== normalizeTee(course.tee)) {
@@ -207,9 +204,16 @@ function RoundStarter() {
             onChange={(event) => void chooseTee(selectedCourse, event.target.value)}
             disabled={isLookingUp}
           >
-            {teeOptions.map((tee) => <option key={tee} value={tee}>{tee === "Forward" ? "Forward / women's" : tee}</option>)}
+            {teeOptions.map((tee) => <option key={tee} value={tee}>{teeOptionLabel(tee)}</option>)}
           </select>
-          <small className="field-help">Changing tees refreshes the verified yardages, rating, slope, club suggestions, and hole strategy.</small>
+          <div className="tee-context">
+            <strong>{teeChoice} tees</strong>
+            <span>{teeDescription(teeChoice)}.</span>
+            {normalizeTee(teeChoice) === normalizeTee(selectedCourse.tee) ? (
+              <small>{selectedCourse.yards.toLocaleString()} yards · {selectedCourse.rating} rating · {selectedCourse.slope} slope</small>
+            ) : null}
+          </div>
+          <small className="field-help">Tee colors are not standardized or restricted by gender. Use the verified yardage, rating, and slope to choose what fits your game. Changing tees refreshes every hole and club suggestion.</small>
         </div>
         <div className="field-group">
           <label>Holes</label>
