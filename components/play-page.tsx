@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
+  Camera,
   CaretLeft,
   CaretRight,
   Check,
@@ -27,13 +29,44 @@ import { VoiceControl } from "./voice-control";
 export function PlayPage() {
   const data = useGolfData();
   const activeRound = data.rounds.find((round) => round.id === data.activeRoundId);
+  const [mode, setMode] = useState<"menu" | "new" | "photo">("menu");
+
   return (
     <div className="page-shell">
-      {activeRound ? <ActiveRound roundId={activeRound.id} /> : <RoundStarter />}
-      {/* Logging a card from a round already played is independent of whatever
-          is on the course right now, so it stays reachable in both states. */}
-      <ScorecardPhotoImport />
+      {activeRound ? <ActiveRound roundId={activeRound.id} onExit={() => setMode("menu")} /> : mode === "menu" ? (
+        <PlayMenu onNewRound={() => setMode("new")} onPhoto={() => setMode("photo")} />
+      ) : (
+        <>
+          <button className="back-link play-back-button" type="button" onClick={() => setMode("menu")}><ArrowLeft size={17} /> Play</button>
+          {mode === "new" ? <RoundStarter /> : <ScorecardPhotoImport />}
+        </>
+      )}
     </div>
+  );
+}
+
+function PlayMenu({ onNewRound, onPhoto }: { onNewRound: () => void; onPhoto: () => void }) {
+  return (
+    <>
+      <section className="page-title">
+        <h1>Play</h1>
+        <p>Choose how you want to record a round.</p>
+      </section>
+      <section className="play-launch-grid" aria-label="Round options">
+        <button className="play-launch-card surface-card" type="button" onClick={onNewRound}>
+          <span><FlagPennant size={25} weight="fill" /></span>
+          <strong>New round</strong>
+          <small>Start scoring on the course</small>
+          <ArrowRight className="play-launch-arrow" size={20} />
+        </button>
+        <button className="play-launch-card surface-card" type="button" onClick={onPhoto}>
+          <span><Camera size={25} weight="fill" /></span>
+          <strong>Log from photo</strong>
+          <small>Import a finished scorecard</small>
+          <ArrowRight className="play-launch-arrow" size={20} />
+        </button>
+      </section>
+    </>
   );
 }
 
@@ -266,7 +299,7 @@ function RoundStarter() {
   );
 }
 
-function ActiveRound({ roundId }: { roundId: string }) {
+function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void }) {
   const data = useGolfData();
   const round = data.rounds.find((item) => item.id === roundId);
   const course = round?.course ?? GENESEE_VALLEY_SOUTH;
@@ -485,8 +518,8 @@ function ActiveRound({ roundId }: { roundId: string }) {
           </div>
         ) : null}
         <section className="round-actions">
-          <button className="secondary-button" type="button" onClick={() => discardActiveRound(round.id)}><Trash size={18} /> Discard</button>
-          <button className="primary-button" type="button" onClick={() => completeRound(round.id)} disabled={!allHolesScored}>
+          <button className="secondary-button" type="button" onClick={() => { onExit(); discardActiveRound(round.id); }}><Trash size={18} /> Discard</button>
+          <button className="primary-button" type="button" onClick={() => { onExit(); completeRound(round.id); }} disabled={!allHolesScored}>
             Save game <FlagPennant size={18} weight="fill" />
           </button>
         </section>
