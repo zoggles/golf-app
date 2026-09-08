@@ -2,38 +2,54 @@
 
 import { useEffect, useRef, useState } from "react";
 
-interface SpeechRecognitionEventLike extends Event {
-  resultIndex: number;
-  results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean; length: number }>;
+const PREFERRED_AUDIO_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/mp4;codecs=mp4a.40.2",
+  "audio/mp4",
+  "audio/ogg;codecs=opus",
+  "audio/webm",
+] as const;
+
+function recordingName(mimeType: string) {
+  if (mimeType.includes("mp4")) return "round.m4a";
+  if (mimeType.includes("ogg")) return "round.ogg";
+  return "round.webm";
 }
 
-interface SpeechRecognitionLike {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onend: (() => void) | null;
-}
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
-
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionConstructor;
-    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+async function openMicrophone() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 48_000 },
+      },
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "OverconstrainedError") {
+      return navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+    throw error;
   }
+}
+
+async function uploadRecording(audio: Blob, filename: string) {
+  const form = new FormData();
+  form.append("audio", audio, filename);
+  const response = await fetch("/api/voice", { method: "POST", body: form });
+  const result = (await response.json()) as { transcript?: string; error?: string };
+  if (!response.ok || !result.transcript) throw new Error(result.error || "No speech was detected.");
+  return result.transcript;
 }
 
 export function useVoiceInput(onTranscript: (text: string) => void | Promise<void>) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const browserTranscriptRef = useRef("");
-  const shouldListenRef = useRef(false);
   const callbackRef = useRef(onTranscript);
+  const mountedRef = useRef(true);
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
@@ -44,13 +60,13 @@ export function useVoiceInput(onTranscript: (text: string) => void | Promise<voi
   }, [onTranscript]);
 
   useEffect(() => {
+    mountedRef.current = true;
     const supported = Boolean(navigator.mediaDevices && typeof window.MediaRecorder !== "undefined");
     const timer = window.setTimeout(() => setIsSupported(supported), 0);
     return () => {
+      mountedRef.current = false;
       window.clearTimeout(timer);
       if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-      shouldListenRef.current = false;
-      recognitionRef.current?.stop();
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
@@ -58,67 +74,52 @@ export function useVoiceInput(onTranscript: (text: string) => void | Promise<voi
   async function startListening() {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const preferredType = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"].find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(stream, preferredType ? { mimeType: preferredType } : undefined);
+      const stream = await openMicrophone();
+      const preferredType = PREFERRED_AUDIO_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, {
+        ...(preferredType ? { mimeType: preferredType } : {}),
+        audioBitsPerSecond: 96_000,
+      });
+
       chunksRef.current = [];
-      browserTranscriptRef.current = "";
-      shouldListenRef.current = true;
       streamRef.current = stream;
       recorderRef.current = recorder;
+
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onerror = () => {
-        setError("The recording stopped unexpectedly. Please try again.");
-        setIsListening(false);
+        stream.getTracks().forEach((track) => track.stop());
+        if (mountedRef.current) {
+          setError("The recording stopped unexpectedly. Please try again.");
+          setIsListening(false);
+        }
       };
       recorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
+        if (!mountedRef.current) return;
+
         setIsListening(false);
-        const audio = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        if (!audio.size) return;
+        const actualType = recorder.mimeType || chunksRef.current[0]?.type || "audio/webm";
+        const audio = new Blob(chunksRef.current, { type: actualType });
+        if (!audio.size) {
+          setError("No audio was captured. Please try again.");
+          return;
+        }
+
         setIsProcessing(true);
         try {
-          const form = new FormData();
-          form.append("audio", audio, recorder.mimeType.includes("mp4") ? "round.m4a" : "round.webm");
-          const response = await fetch("/api/voice", { method: "POST", body: form });
-          const result = (await response.json()) as { transcript?: string; error?: string };
-          if (!response.ok || !result.transcript) throw new Error(result.error || "No speech was detected.");
-          await callbackRef.current(result.transcript);
+          const transcript = await uploadRecording(audio, recordingName(actualType));
+          await callbackRef.current(transcript);
         } catch (cause) {
-          const browserTranscript = browserTranscriptRef.current.trim();
-          if (browserTranscript) await callbackRef.current(browserTranscript);
-          else setError(cause instanceof Error ? cause.message : "I couldn’t transcribe that. Please try again.");
+          setError(cause instanceof Error ? cause.message : "I couldn’t transcribe that. Please try again.");
         } finally {
-          setIsProcessing(false);
+          if (mountedRef.current) setIsProcessing(false);
         }
       };
-      recorder.start(1000);
-      const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-      if (Recognition) {
-        const recognition = new Recognition();
-        recognition.continuous = true;
-        recognition.interimResults = false;
-        recognition.lang = "en-US";
-        recognition.onresult = (event) => {
-          for (let index = event.resultIndex; index < event.results.length; index += 1) {
-            const result = event.results[index];
-            if (result.isFinal && result[0]?.transcript) browserTranscriptRef.current += ` ${result[0].transcript}`;
-          }
-        };
-        recognition.onend = () => {
-          if (shouldListenRef.current) {
-            try { recognition.start(); } catch { /* A pending restart is harmless. */ }
-          }
-        };
-        try {
-          recognition.start();
-          recognitionRef.current = recognition;
-        } catch {
-          recognitionRef.current = null;
-        }
-      }
+
+      // One complete file is more reliable than stitched timed chunks on mobile Chromium.
+      recorder.start();
       setIsListening(true);
     } catch (cause) {
       const denied = cause instanceof DOMException && (cause.name === "NotAllowedError" || cause.name === "SecurityError");
@@ -129,8 +130,6 @@ export function useVoiceInput(onTranscript: (text: string) => void | Promise<voi
   function toggleListening() {
     if (isProcessing) return;
     if (isListening) {
-      shouldListenRef.current = false;
-      recognitionRef.current?.stop();
       if (recorderRef.current?.state === "recording") recorderRef.current.stop();
     } else {
       void startListening();

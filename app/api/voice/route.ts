@@ -1,5 +1,5 @@
 import { gateway } from "@ai-sdk/gateway";
-import { experimental_transcribe as transcribe } from "ai";
+import { transcribe } from "ai";
 
 export const maxDuration = 60;
 
@@ -11,8 +11,18 @@ export async function POST(request: Request) {
     if (audio.size > 15 * 1024 * 1024) return Response.json({ error: "That recording is too large. Try a shorter update." }, { status: 413 });
 
     const result = await transcribe({
-      model: gateway.transcriptionModel("openai/whisper-1"),
+      model: gateway.transcriptionModel("openai/gpt-4o-mini-transcribe"),
       audio: new Uint8Array(await audio.arrayBuffer()),
+      providerOptions: {
+        openai: {
+          language: "en",
+          prompt: "Golf round dictation. Expect golf course names, hole numbers, stroke counts, pars, bogeys, birdies, eagles, putts, penalties, clubs, fairways, and greens in regulation.",
+        },
+        gateway: {
+          tags: ["feature:voice-transcription", "app:golf-app"],
+        },
+      },
+      abortSignal: AbortSignal.timeout(45_000),
     });
 
     return Response.json({ transcript: result.text.trim() });
