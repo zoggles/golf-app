@@ -257,6 +257,42 @@ export function startRound(course: Course, segment: RoundSegment, startPhrase?: 
   return round;
 }
 
+/**
+ * Files an already-played round, such as one read off a photographed paper
+ * scorecard. It lands completed and never becomes the active round, so a game
+ * in progress on the phone is left alone.
+ */
+export function importCompletedRound(input: {
+  course: Course;
+  segment: RoundSegment;
+  scores: Record<number, number>;
+  playedAt: string;
+  note: string;
+}): GolfRound {
+  const data = readGolfData();
+  const round: GolfRound = {
+    id: createId("round"),
+    courseId: input.course.id,
+    courseName: input.course.name,
+    location: input.course.location,
+    segment: input.segment,
+    tee: input.course.tee,
+    courseRating: input.course.rating,
+    courseSlope: input.course.slope,
+    course: input.course,
+    startedAt: input.playedAt,
+    completedAt: input.playedAt,
+    status: "completed",
+    scores: { ...input.scores },
+    events: [{ id: createId("event"), at: new Date().toISOString(), source: "manual", text: input.note }],
+  };
+  const courses = [input.course, ...data.courses.filter((item) => item.id !== input.course.id)];
+  setData({ ...data, courses, rounds: [round, ...data.rounds] });
+  queueOperation({ kind: "save-course", course: input.course });
+  queueOperation({ kind: "save-game", round });
+  return round;
+}
+
 function saveRound(data: GolfData, round: GolfRound, activeRoundId?: string | null): void {
   const rounds = data.rounds.map((item) => (item.id === round.id ? round : item));
   setData({

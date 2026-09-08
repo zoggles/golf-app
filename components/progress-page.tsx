@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CaretRight, FlagPennant, Gauge, Medal, TrendUp } from "@phosphor-icons/react";
+import { ArrowRight, CaretRight, FileArrowDown, FlagPennant, Gauge, Medal, TrendUp } from "@phosphor-icons/react";
 import { useGolfData } from "@/hooks/use-golf-data";
+import { buildHistoryCsv, historyExportFilename } from "@/lib/history-export";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound } from "@/lib/metrics";
+import type { GolfRound } from "@/lib/types";
 
 export function ProgressPage() {
   const data = useGolfData();
@@ -21,7 +23,10 @@ export function ProgressPage() {
   return (
     <div className="page-shell progress-page">
       <section className="progress-hero">
-        <div className="progress-title-row"><div><h1>Progress</h1><p>{completed.length} completed {completed.length === 1 ? "round" : "rounds"}</p></div></div>
+        <div className="progress-title-row">
+          <div><h1>Progress</h1><p>{completed.length} completed {completed.length === 1 ? "round" : "rounds"}</p></div>
+          <ExportHistoryButton rounds={data.rounds} />
+        </div>
       </section>
 
       {completed.length === 0 ? (
@@ -91,6 +96,37 @@ export function ProgressPage() {
       )}
       <p className="metric-disclaimer">Handicap is an informal trend estimate, not an official USGA Handicap Index.</p>
     </div>
+  );
+}
+
+/**
+ * Downloads every stored round as a spreadsheet, one row per hole. The file is
+ * built in the browser from the same mirror the page is reading, so it works on
+ * the course with no signal.
+ */
+function ExportHistoryButton({ rounds }: { rounds: GolfRound[] }) {
+  function download() {
+    // The byte order mark is what makes Excel read the file as UTF-8, so course
+    // names keep their dashes and accents.
+    const blob = new Blob(["\uFEFF", buildHistoryCsv(rounds)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = historyExportFilename(new Date());
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <button
+      className="secondary-button export-button"
+      type="button"
+      onClick={download}
+      disabled={rounds.length === 0}
+      title="Download every round as a CSV spreadsheet, one row per hole"
+    >
+      <FileArrowDown size={18} /> Export round history
+    </button>
   );
 }
 

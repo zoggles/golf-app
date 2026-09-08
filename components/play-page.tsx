@@ -20,12 +20,20 @@ import { nextHoleAfterVoiceUpdates, parseScoreCommands, parseStartCommand, type 
 import { COMMON_TEES, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeOptionLabel } from "@/lib/tee-selection";
 import type { Course, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
+import { ScorecardPhotoImport } from "./scorecard-photo-import";
 import { VoiceControl } from "./voice-control";
 
 export function PlayPage() {
   const data = useGolfData();
   const activeRound = data.rounds.find((round) => round.id === data.activeRoundId);
-  return <div className="page-shell">{activeRound ? <ActiveRound roundId={activeRound.id} /> : <RoundStarter />}</div>;
+  return (
+    <div className="page-shell">
+      {activeRound ? <ActiveRound roundId={activeRound.id} /> : <RoundStarter />}
+      {/* Logging a card from a round already played is independent of whatever
+          is on the course right now, so it stays reachable in both states. */}
+      <ScorecardPhotoImport />
+    </div>
+  );
 }
 
 function RoundStarter() {
