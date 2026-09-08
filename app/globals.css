@@ -85,16 +85,21 @@ a { color: inherit; text-decoration: none; }
 .voice-entry input { min-width: 0; flex: 1; border: 0; background: transparent; color: var(--ink); padding: 11px 13px; outline: none; }
 .voice-entry input::placeholder { color: #68756c; }
 .voice-entry button { width: 46px; border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--green); cursor: pointer; }
+.voice-entry button:disabled, .voice-entry input:disabled { opacity: .55; cursor: not-allowed; }
 .voice-error { grid-column: 1 / -1; margin: -2px 0 0; color: var(--danger); font-size: 12px; }
 .success-note, .feedback-line { margin-top: 14px; color: var(--green); font-size: 13px; display: flex; align-items: center; gap: 7px; }
 .field-group { margin-top: 24px; }
 .field-group > label { color: var(--muted); display: block; font-size: 12px; margin-bottom: 9px; }
+.course-select { width: 100%; min-height: 48px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--ink); padding: 0 42px 0 13px; font: inherit; cursor: pointer; }
+.course-select:focus { border-color: rgba(173,240,95,.55); outline: 2px solid rgba(173,240,95,.12); outline-offset: 2px; }
+.course-summary { margin-top: 12px; }
 .course-choice { border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; }
 .course-choice.selected { border-color: rgba(173,240,95,.4); background: rgba(173,240,95,.045); }
 .course-icon { width: 42px; height: 42px; border-radius: 11px; background: rgba(173,240,95,.12); color: var(--green); display: grid; place-items: center; }
 .course-choice > span:nth-child(2) { display: flex; flex-direction: column; gap: 4px; }
 .course-choice small { color: var(--muted); display: flex; gap: 4px; align-items: center; }
 .choice-check { color: var(--green); margin-left: auto; }
+.spin { display: grid; place-items: center; animation: spin .85s linear infinite; }
 .segment-control { display: grid; grid-template-columns: repeat(3, 1fr); padding: 4px; border: 1px solid var(--line); border-radius: 13px; background: rgba(0,0,0,.18); }
 .segment-control button { min-height: 42px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
 .segment-control button.selected { background: var(--surface-2); color: var(--ink); box-shadow: 0 2px 9px rgba(0,0,0,.22); }
@@ -221,6 +226,7 @@ a { color: inherit; text-decoration: none; }
 .nav-item.active { background: var(--green); color: #0b170d; }
 
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(173,240,95,.32); } 50% { box-shadow: 0 0 0 12px rgba(173,240,95,0); } }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 680px) {
   .topbar { height: 62px; padding: 0 17px; }

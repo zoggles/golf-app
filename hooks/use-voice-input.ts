@@ -35,13 +35,29 @@ async function openMicrophone() {
   }
 }
 
-async function uploadRecording(audio: Blob, filename: string) {
-  const form = new FormData();
-  form.append("audio", audio, filename);
-  const response = await fetch("/api/voice", { method: "POST", body: form });
-  const result = (await response.json()) as { transcript?: string; error?: string };
-  if (!response.ok || !result.transcript) throw new Error(result.error || "No speech was detected.");
-  return result.transcript;
+type VoicePhase = "idle" | "recording" | "uploading" | "transcribing" | "applying";
+
+function uploadRecording(audio: Blob, filename: string, onUploaded: () => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append("audio", audio, filename);
+    const request = new XMLHttpRequest();
+    request.open("POST", "/api/voice");
+    request.responseType = "json";
+    request.timeout = 60_000;
+    request.upload.onload = onUploaded;
+    request.onerror = () => reject(new Error("The recording could not be uploaded. Check your connection and try again."));
+    request.ontimeout = () => reject(new Error("Transcription took too long. Please try again."));
+    request.onload = () => {
+      const result = request.response as { transcript?: string; error?: string } | null;
+      if (request.status < 200 || request.status >= 300 || !result?.transcript) {
+        reject(new Error(result?.error || "No speech was detected."));
+        return;
+      }
+      resolve(result.transcript);
+    };
+    request.send(form);
+  });
 }
 
 export function useVoiceInput(onTranscript: (text: string) => void | Promise<void>) {
@@ -54,6 +70,7 @@ export function useVoiceInput(onTranscript: (text: string) => void | Promise<voi
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<VoicePhase>("idle");
 
   useEffect(() => {
     callbackRef.current = onTranscript;
@@ -93,6 +110,7 @@ export function useVoiceInput(onTranscript: (text: string) => void | Promise<voi
         if (mountedRef.current) {
           setError("The recording stopped unexpectedly. Please try again.");
           setIsListening(false);
+          setPhase("idle");
         }
       };
       recorder.onstop = async () => {
@@ -108,19 +126,27 @@ export function useVoiceInput(onTranscript: (text: string) => void | Promise<voi
         }
 
         setIsProcessing(true);
+        setPhase("uploading");
         try {
-          const transcript = await uploadRecording(audio, recordingName(actualType));
+          const transcript = await uploadRecording(audio, recordingName(actualType), () => {
+            if (mountedRef.current) setPhase("transcribing");
+          });
+          setPhase("applying");
           await callbackRef.current(transcript);
         } catch (cause) {
           setError(cause instanceof Error ? cause.message : "I couldn’t transcribe that. Please try again.");
         } finally {
-          if (mountedRef.current) setIsProcessing(false);
+          if (mountedRef.current) {
+            setIsProcessing(false);
+            setPhase("idle");
+          }
         }
       };
 
       // One complete file is more reliable than stitched timed chunks on mobile Chromium.
       recorder.start();
       setIsListening(true);
+      setPhase("recording");
     } catch (cause) {
       const denied = cause instanceof DOMException && (cause.name === "NotAllowedError" || cause.name === "SecurityError");
       setError(denied ? "Microphone permission is needed. You can still type below." : "I couldn’t start the microphone.");
@@ -136,5 +162,5 @@ export function useVoiceInput(onTranscript: (text: string) => void | Promise<voi
     }
   }
 
-  return { isListening, isProcessing, isSupported, error, toggleListening };
+  return { isListening, isProcessing, isSupported, error, phase, toggleListening };
 }

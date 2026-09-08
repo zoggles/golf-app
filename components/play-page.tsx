@@ -32,27 +32,43 @@ function RoundStarter() {
   const [segment, setSegment] = useState<RoundSegment>("front9");
   const [phrase, setPhrase] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [activity, setActivity] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<Course>(GENESEE_VALLEY_SOUTH);
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [courseConfirmed, setCourseConfirmed] = useState(true);
+
+  const availableCourses = useMemo(() => {
+    const byId = new Map<string, Course>([[GENESEE_VALLEY_SOUTH.id, GENESEE_VALLEY_SOUTH]]);
+    for (const course of data.courses) byId.set(course.id, course);
+    for (const round of data.rounds) {
+      if (!byId.has(round.courseId)) byId.set(round.courseId, round.course);
+    }
+    return [...byId.values()];
+  }, [data.courses, data.rounds]);
 
   async function handleVoice(text: string) {
     const command = parseStartCommand(text);
     setPhrase(text);
     setSegment(command.segment);
     setLookupError(null);
-    const savedCourse = data.courses.find((course) => text.toLowerCase().includes(course.shortName.toLowerCase()));
+    setMessage(null);
+    setActivity("Checking your saved courses…");
+    const normalizedText = text.toLowerCase();
+    const savedCourse = availableCourses.find((course) =>
+      normalizedText.includes(course.shortName.toLowerCase()) || normalizedText.includes(course.name.toLowerCase()),
+    );
     if (command.courseId === GENESEE_VALLEY_SOUTH.id || savedCourse) {
       const course = savedCourse ?? GENESEE_VALLEY_SOUTH;
       setSelectedCourse(course);
       setMessage(`Found ${course.shortName}. ${segmentLabel(command.segment)} is ready.`);
       setCourseConfirmed(true);
+      setActivity(null);
       return;
     }
     setCourseConfirmed(false);
     setIsLookingUp(true);
-    setMessage("Searching current course and scorecard sources…");
+    setActivity("Searching published scorecards and verifying hole data…");
     try {
       const response = await fetch("/api/courses/lookup", {
         method: "POST",
@@ -67,11 +83,21 @@ function RoundStarter() {
       if (result.course.holes.length === 9) setSegment("front9");
       setMessage(`Verified ${result.course.shortName} from its published scorecard.`);
     } catch (cause) {
-      setMessage(null);
       setLookupError(cause instanceof Error ? cause.message : "I couldn’t verify that course.");
     } finally {
       setIsLookingUp(false);
+      setActivity(null);
     }
+  }
+
+  function chooseCourse(courseId: string) {
+    const course = availableCourses.find((item) => item.id === courseId);
+    if (!course) return;
+    setSelectedCourse(course);
+    setCourseConfirmed(true);
+    setLookupError(null);
+    setMessage(`${course.shortName} selected.`);
+    if (course.holes.length === 9) setSegment("front9");
   }
 
   function beginRound() {
@@ -100,10 +126,19 @@ function RoundStarter() {
           onSubmit={handleVoice}
           placeholder="Course, city, and round length"
           example='Try “Front 9 at Genesee Valley South”'
+          activity={activity}
         />
         {message ? <div className="success-note"><Check size={17} weight="bold" />{message}</div> : null}
         {lookupError ? <div className="voice-error">{lookupError}</div> : null}
         <div className="field-group">
+          <label htmlFor="saved-course">Saved courses</label>
+          <select id="saved-course" className="course-select" value={selectedCourse.id} onChange={(event) => chooseCourse(event.target.value)}>
+            {availableCourses.map((course) => (
+              <option key={course.id} value={course.id}>{course.shortName} — {course.location}</option>
+            ))}
+          </select>
+        </div>
+        <div className="field-group course-summary">
           <label>Selected course</label>
           <div className="course-choice selected">
             <span className="course-icon"><FlagPennant size={21} weight="fill" /></span>
@@ -145,6 +180,7 @@ function ActiveRound({ roundId }: { roundId: string }) {
     () => round?.scores[initialHole] ?? course.holes.find((item) => item.number === initialHole)?.par ?? 4,
   );
   const [feedback, setFeedback] = useState("Ready for your first score.");
+  const [activity, setActivity] = useState<string | null>(null);
 
   const currentHole = course.holes.find((item) => item.number === selectedHole) ?? course.holes[0];
 
@@ -167,7 +203,7 @@ function ActiveRound({ roundId }: { roundId: string }) {
   }
 
   async function handleVoice(text: string) {
-    setFeedback("Understanding your update…");
+    setActivity("Interpreting the scorecard update…");
     try {
       const response = await fetch("/api/round-command", {
         method: "POST",
@@ -197,6 +233,8 @@ function ActiveRound({ roundId }: { roundId: string }) {
         selectHole(fallback[fallback.length - 1].hole);
         setFeedback(`Updated ${fallback.map((update) => `hole ${update.hole} to ${update.strokes}`).join(" and ")}.`);
       } else setFeedback(cause instanceof Error ? cause.message : "I couldn’t understand that update.");
+    } finally {
+      setActivity(null);
     }
   }
 
@@ -250,7 +288,7 @@ function ActiveRound({ roundId }: { roundId: string }) {
 
       <section className="voice-score-card surface-card">
         <div className="section-heading tight"><div><p className="eyebrow">HANDS-FREE UPDATE</p><h2>Tell me your score</h2></div></div>
-        <VoiceControl onSubmit={handleVoice} placeholder="e.g. Change hole 3 to 5 strokes" example='Try “Change hole 3 to 5, and hole 4 was a bogey”' compact />
+        <VoiceControl onSubmit={handleVoice} placeholder="e.g. Change hole 3 to 5 strokes" example='Try “Change hole 3 to 5, and hole 4 was a bogey”' activity={activity} compact />
         <div className="feedback-line"><Sparkle size={15} weight="fill" /> {feedback}</div>
       </section>
 
