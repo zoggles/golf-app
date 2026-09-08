@@ -29,7 +29,6 @@ export function PlayPage() {
 
 function RoundStarter() {
   const data = useGolfData();
-  const [showSetup, setShowSetup] = useState(false);
   const [segment, setSegment] = useState<RoundSegment>("front9");
   const [phrase, setPhrase] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -85,70 +84,51 @@ function RoundStarter() {
 
   return (
     <>
-      <section className="hero-block">
-        <p className="eyebrow"><span /> YOUR NEXT ROUND</p>
-        <h1>Play the shot.<br /><em>Remember the round.</em></h1>
-        <p className="hero-lede">A scorecard that listens, keeps pace, and turns every round into a clearer picture of your game.</p>
-        {!showSetup ? (
-          <button className="primary-button hero-action" type="button" onClick={() => setShowSetup(true)}>
-            Start a round <ArrowRight size={19} weight="bold" />
-          </button>
-        ) : null}
+      <section className="page-title">
+        <h1>New round</h1>
+        <p>Search by course and location, or use the mic.</p>
       </section>
 
-      {showSetup ? (
-        <section className="setup-card surface-card">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">ROUND SETUP</p>
-              <h2>Where are we playing?</h2>
-            </div>
-            <span className="step-pill">1 of 1</span>
+      <section className="setup-card surface-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">COURSE</p>
+            <h2>Course and round</h2>
           </div>
-          <VoiceControl
-            onSubmit={handleVoice}
-            placeholder="Describe your round"
-            example='Try “Front 9 at Genesee Valley South”'
-          />
-          {message ? <div className="success-note"><Check size={17} weight="bold" />{message}</div> : null}
-          {lookupError ? <div className="voice-error">{lookupError}</div> : null}
-          <div className="field-group">
-            <label>Course</label>
-            <div className="course-choice selected">
-              <span className="course-icon"><FlagPennant size={21} weight="fill" /></span>
-              <span><strong>{selectedCourse.shortName}</strong><small><MapPin size={13} /> {selectedCourse.location}</small></span>
-              <Check className="choice-check" size={19} weight="bold" />
-            </div>
+        </div>
+        <VoiceControl
+          onSubmit={handleVoice}
+          placeholder="Course, city, and round length"
+          example='Try “Front 9 at Genesee Valley South”'
+        />
+        {message ? <div className="success-note"><Check size={17} weight="bold" />{message}</div> : null}
+        {lookupError ? <div className="voice-error">{lookupError}</div> : null}
+        <div className="field-group">
+          <label>Selected course</label>
+          <div className="course-choice selected">
+            <span className="course-icon"><FlagPennant size={21} weight="fill" /></span>
+            <span><strong>{selectedCourse.shortName}</strong><small><MapPin size={13} /> {selectedCourse.location}</small></span>
+            <Check className="choice-check" size={19} weight="bold" />
           </div>
-          <div className="field-group">
-            <label>Round</label>
-            <div className="segment-control">
-              {(["front9", "back9", "full18"] as RoundSegment[]).filter((option) => selectedCourse.holes.length === 18 || option === "front9").map((option) => (
-                <button key={option} type="button" onClick={() => setSegment(option)} className={segment === option ? "selected" : ""}>
-                  {segmentLabel(option)}
-                </button>
-              ))}
-            </div>
+        </div>
+        <div className="field-group">
+          <label>Holes</label>
+          <div className="segment-control">
+            {(["front9", "back9", "full18"] as RoundSegment[]).filter((option) => selectedCourse.holes.length === 18 || option === "front9").map((option) => (
+              <button key={option} type="button" onClick={() => setSegment(option)} className={segment === option ? "selected" : ""}>
+                {segmentLabel(option)}
+              </button>
+            ))}
           </div>
-          <div className="course-facts">
-            <span><small>TEE</small>{selectedCourse.tee}</span>
-            <span><small>PAR</small>{segmentPar}</span>
-            <span><small>YARDS</small>{segmentYards.toLocaleString()}</span>
-          </div>
-          <button className="primary-button full-width" type="button" onClick={beginRound} disabled={isLookingUp || !courseConfirmed}>
-            Begin {segmentLabel(segment)} <ArrowRight size={19} weight="bold" />
-          </button>
-        </section>
-      ) : (
-        <section className="preview-card">
-          <div className="preview-orbit"><span>18</span><small>HOLES</small></div>
-          <div><p>Voice-ready scoring</p><span>Say the hole and score. We’ll handle the card.</span></div>
-        </section>
-      )}
-
-      <section className="feature-row">
-        <div><Sparkle size={20} weight="fill" /><span><strong>Simple by design</strong><small>Built for one-handed use between holes.</small></span></div>
-        <div><FlagPennant size={20} weight="fill" /><span><strong>Your history starts here</strong><small>Every finish feeds your Progress dashboard.</small></span></div>
+        </div>
+        <div className="course-facts">
+          <span><small>TEE</small>{selectedCourse.tee}</span>
+          <span><small>PAR</small>{segmentPar}</span>
+          <span><small>YARDS</small>{segmentYards.toLocaleString()}</span>
+        </div>
+        <button className="primary-button full-width" type="button" onClick={beginRound} disabled={isLookingUp || !courseConfirmed}>
+          Start {segmentLabel(segment)} <ArrowRight size={19} weight="bold" />
+        </button>
       </section>
     </>
   );

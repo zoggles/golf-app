@@ -20,7 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
         <div className="local-pill" title="Your round history is stored in this browser">
           <WifiSlash size={14} />
-          <span>Local-first</span>
+          <span>This device</span>
         </div>
       </header>
       <main>{children}</main>

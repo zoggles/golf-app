@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ChartLineUp, FlagPennant, Gauge, Medal, TrendUp } from "@phosphor-icons/react";
+import { ArrowRight, CaretRight, FlagPennant, Gauge, Medal, TrendUp } from "@phosphor-icons/react";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { estimateHandicap, formatToPar, scoringAverage, summarizeRound } from "@/lib/metrics";
 
@@ -20,23 +20,21 @@ export function ProgressPage() {
   return (
     <div className="page-shell progress-page">
       <section className="progress-hero">
-        <p className="eyebrow"><span /> YOUR GAME, IN FOCUS</p>
-        <div className="progress-title-row"><div><h1>Progress</h1><p>The honest shape of your game, one round at a time.</p></div><ChartLineUp size={42} weight="duotone" /></div>
+        <div className="progress-title-row"><div><h1>Progress</h1><p>{completed.length} completed {completed.length === 1 ? "round" : "rounds"}</p></div></div>
       </section>
 
       {completed.length === 0 ? (
         <section className="empty-progress surface-card">
           <div className="empty-mark"><FlagPennant size={34} weight="fill" /></div>
-          <p className="eyebrow">YOUR BASELINE AWAITS</p>
-          <h2>Finish one round to start seeing your game.</h2>
-          <p>Scores, trends, best rounds, and a handicap estimate will appear here automatically.</p>
-          <Link href="/play" className="primary-button">Start your first round <ArrowRight size={18} /></Link>
+          <h2>No completed rounds</h2>
+          <p>Complete a round to calculate scoring and handicap metrics.</p>
+          <Link href="/play" className="primary-button">New round <ArrowRight size={18} /></Link>
         </section>
       ) : (
         <>
           <section className="handicap-card surface-card">
-            <div><p className="eyebrow">ESTIMATED INDEX</p><strong>{handicap?.toFixed(1) ?? "—"}</strong><span>HANDICAP TREND</span></div>
-            <div className="handicap-copy"><TrendUp size={25} weight="bold" /><p><strong>Your baseline is taking shape.</strong> This estimate improves as you add complete scorecards.</p></div>
+            <div><p className="eyebrow">ESTIMATED INDEX</p><strong>{handicap?.toFixed(1) ?? "—"}</strong><span>INFORMAL ESTIMATE</span></div>
+            <div className="handicap-copy"><TrendUp size={25} weight="bold" /><p>Based on the best differentials from your saved rounds.</p></div>
           </section>
 
           <section className="metric-grid">
@@ -47,7 +45,7 @@ export function ProgressPage() {
           </section>
 
           <section className="trend-card surface-card">
-            <div className="section-heading"><div><p className="eyebrow">FORM</p><h2>Recent rounds</h2></div><span>TO PAR</span></div>
+            <div className="section-heading"><div><h2>Recent rounds</h2></div><span>TO PAR</span></div>
             <div className="trend-bars">
               {summaries.slice(0, 6).reverse().map((round) => {
                 const height = Math.max(18, Math.min(100, 22 + Math.abs(round.toPar) * 7));
@@ -57,14 +55,15 @@ export function ProgressPage() {
           </section>
 
           <section className="history-section">
-            <div className="section-heading"><div><p className="eyebrow">HISTORY</p><h2>Round log</h2></div></div>
+            <div className="section-heading"><div><h2>Round log</h2></div></div>
             <div className="round-list">
               {summaries.map((round) => (
-                <article key={round.id} className="round-list-item">
+                <Link key={round.id} href={`/rounds/${round.id}`} className="round-list-item" aria-label={`Open ${round.courseName} round from ${new Date(round.date).toLocaleDateString()}`}>
                   <span className="round-date"><strong>{new Date(round.date).getDate()}</strong><small>{new Date(round.date).toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</small></span>
                   <span className="round-info"><strong>{round.courseName}</strong><small>{round.segment} · {round.holesPlayed} holes</small></span>
                   <span className="round-score"><strong>{round.total}</strong><small>{formatToPar(round.toPar)}</small></span>
-                </article>
+                  <CaretRight className="round-open-icon" size={18} />
+                </Link>
               ))}
             </div>
           </section>

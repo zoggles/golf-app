@@ -147,6 +147,31 @@ export function discardActiveRound(roundId: string): void {
   });
 }
 
+export function updateCompletedRoundScores(roundId: string, scores: Record<number, number>): void {
+  const data = readGolfData();
+  const now = new Date().toISOString();
+  const rounds = data.rounds.map((round) => {
+    if (round.id !== roundId || round.status !== "completed") return round;
+    const event: RoundEvent = {
+      id: createId("event"),
+      at: now,
+      source: "manual",
+      text: "Edited completed scorecard",
+    };
+    return { ...round, scores: { ...scores }, events: [event, ...round.events] };
+  });
+  writeGolfData({ ...data, rounds });
+}
+
+export function deleteRound(roundId: string): void {
+  const data = readGolfData();
+  writeGolfData({
+    ...data,
+    activeRoundId: data.activeRoundId === roundId ? null : data.activeRoundId,
+    rounds: data.rounds.filter((round) => round.id !== roundId),
+  });
+}
+
 export function firstUnscoredHole(round: GolfRound): number | null {
   const holes = getSegmentHoles(round.course ?? getCourse(round.courseId), round.segment);
   return holes.find((holeItem) => round.scores[holeItem.number] == null)?.number ?? null;
