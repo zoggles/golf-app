@@ -34,6 +34,9 @@ export async function POST(request: Request) {
     if (String(error).toLowerCase().includes("valid credit card")) {
       return Response.json({ error: "AI interpretation is awaiting Vercel billing setup.", setupRequired: true }, { status: 503 });
     }
-    return Response.json({ error: "I couldn’t understand that update. Try naming the hole and score.", diagnosticCode }, { status: 502 });
+    const diagnosticMessage = error instanceof Error
+      ? error.message.replace(/https?:\/\/\S+/g, "[link]").slice(0, 300)
+      : "Unknown AI error";
+    return Response.json({ error: "I couldn’t understand that update. Try naming the hole and score.", diagnosticCode, diagnosticMessage }, { status: 502 });
   }
 }
