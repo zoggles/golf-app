@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseScoreCommand, parseScoreCommands, parseStartCommand } from "./voice-parser";
+import { nextHoleAfterVoiceUpdates, parseScoreCommand, parseScoreCommands, parseStartCommand } from "./voice-parser";
 import { GENESEE_VALLEY_SOUTH } from "./courses";
 
 describe("voice commands", () => {
@@ -24,5 +24,24 @@ describe("voice commands", () => {
       { hole: 3, strokes: 5 },
       { hole: 4, strokes: 4 },
     ]);
+  });
+
+  it("honors an explicit hole instead of the current-hole context", () => {
+    expect(parseScoreCommands("hole two, six strokes", GENESEE_VALLEY_SOUTH, 1)).toEqual([{ hole: 2, strokes: 6 }]);
+  });
+
+  it("advances after scoring the current hole", () => {
+    expect(nextHoleAfterVoiceUpdates([1, 2, 3], {}, 1, [{ hole: 1, strokes: 6 }])).toBe(2);
+  });
+
+  it("skips holes already scored in the same request", () => {
+    expect(nextHoleAfterVoiceUpdates([1, 2, 3], {}, 1, [
+      { hole: 1, strokes: 6 },
+      { hole: 2, strokes: 4 },
+    ])).toBe(3);
+  });
+
+  it("keeps the current hole selected when correcting a past hole", () => {
+    expect(nextHoleAfterVoiceUpdates([1, 2, 17, 18], { 1: 6 }, 17, [{ hole: 2, strokes: 4 }])).toBe(17);
   });
 });

@@ -33,6 +33,21 @@ export interface ScoreCommand {
   strokes: number;
 }
 
+export function nextHoleAfterVoiceUpdates(
+  holeNumbers: number[],
+  scores: Record<number, number>,
+  currentHole: number,
+  updates: ScoreCommand[],
+): number {
+  if (!updates.some((update) => update.hole === currentHole)) return currentHole;
+
+  const updatedScores = { ...scores };
+  for (const update of updates) updatedScores[update.hole] = update.strokes;
+  const currentIndex = holeNumbers.indexOf(currentHole);
+  const laterUnscored = holeNumbers.slice(currentIndex + 1).find((hole) => updatedScores[hole] == null);
+  return laterUnscored ?? holeNumbers.find((hole) => updatedScores[hole] == null) ?? currentHole;
+}
+
 const SCORE_OFFSETS: Record<string, number> = {
   eagle: -2,
   birdie: -1,

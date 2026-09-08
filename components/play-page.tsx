@@ -16,7 +16,7 @@ import {
 import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/courses";
 import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundScore } from "@/lib/storage";
 import { formatToPar, summarizeRound } from "@/lib/metrics";
-import { parseScoreCommands, parseStartCommand } from "@/lib/voice-parser";
+import { nextHoleAfterVoiceUpdates, parseScoreCommands, parseStartCommand, type ScoreCommand } from "@/lib/voice-parser";
 import { COMMON_TEES, extractTeeMention, normalizeTee, samePhysicalCourse } from "@/lib/tee-selection";
 import type { Course, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
@@ -267,7 +267,25 @@ function ActiveRound({ roundId }: { roundId: string }) {
     if (nextHole) selectHole(nextHole.number);
   }
 
+  function applyVoiceUpdates(updates: ScoreCommand[], text: string, reply?: string) {
+    for (const update of updates) updateRoundScore(round!.id, update.hole, update.strokes, "voice", text);
+    const nextHole = nextHoleAfterVoiceUpdates(
+      holes.map((hole) => hole.number),
+      round!.scores,
+      selectedHole,
+      updates,
+    );
+    if (nextHole !== selectedHole) selectHole(nextHole);
+    setFeedback(reply || `Updated ${updates.map((update) => `hole ${update.hole} to ${update.strokes}`).join(" and ")}.`);
+  }
+
   async function handleVoice(text: string) {
+    const explicitUpdates = parseScoreCommands(text, course, selectedHole).filter((update) => holes.some((hole) => hole.number === update.hole));
+    if (explicitUpdates.length) {
+      applyVoiceUpdates(explicitUpdates, text);
+      return;
+    }
+
     setActivity("Interpreting the scorecard update…");
     try {
       const response = await fetch("/api/round-command", {
@@ -287,16 +305,11 @@ function ActiveRound({ roundId }: { roundId: string }) {
         setFeedback(result.reply || "Which hole and score should I update?");
         return;
       }
-      for (const update of updates) updateRoundScore(round!.id, update.hole, update.strokes, "voice", text);
-      const last = updates[updates.length - 1];
-      selectHole(last.hole);
-      setFeedback(result.reply || `Updated ${updates.length} ${updates.length === 1 ? "hole" : "holes"}.`);
+      applyVoiceUpdates(updates, text, result.reply);
     } catch (cause) {
       const fallback = parseScoreCommands(text, course, selectedHole).filter((update) => holes.some((hole) => hole.number === update.hole));
       if (fallback.length) {
-        for (const update of fallback) updateRoundScore(round!.id, update.hole, update.strokes, "voice", text);
-        selectHole(fallback[fallback.length - 1].hole);
-        setFeedback(`Updated ${fallback.map((update) => `hole ${update.hole} to ${update.strokes}`).join(" and ")}.`);
+        applyVoiceUpdates(fallback, text);
       } else setFeedback(cause instanceof Error ? cause.message : "I couldn’t understand that update.");
     } finally {
       setActivity(null);
