@@ -57,26 +57,38 @@ export async function POST(request: Request) {
     const query = typeof body.query === "string" ? body.query.trim().slice(0, 300) : "";
     if (!query) return Response.json({ error: "Tell me the course name and location." }, { status: 400 });
 
-    const result = await generateText({
+    const research = await generateText({
       model: "google/gemini-2.5-flash",
-      maxOutputTokens: 8000,
-      output: Output.object({ schema: courseSchema }),
-      stopWhen: isStepCount(4),
-      system: `You research golf courses for a live scorecard using Google Search grounding. Always search before answering. Resolve speech-to-text errors, phonetic spellings, and small misspellings by combining the requested name with its city/state; for example, a near-match at the exact requested location is more likely than an exact-name match in another city. Search both the user's wording and promising corrected spellings. Prefer an official course scorecard or course website, then reputable golf directories that publish a complete hole-by-hole scorecard. If the course has 18 holes, always return its complete 18-hole scorecard even when the requested round is only the front or back nine; return 9 holes only when the course itself has exactly 9 holes. Use White/Middle tees only when the user does not specify a tee. When a tee is specified, use that exact published tee and never silently substitute White/Middle. Treat women's or ladies' tee requests as a request for the course's adult forward tee; return the actual published name or color. Copy every par, yardage, handicap, rating, and slope from retrieved sources—never estimate factual scorecard data. Rating, slope, par, and yards must describe the selected tee's full scorecard. If sources disagree, prefer the official scorecard. Recalculate suggested clubs and strategy from the selected tee's yardages. The id must be a stable lowercase slug including course and tee. sourceUrl must exactly match one of your grounded source URLs and directly support the scorecard. Never substitute a different course or tee when the evidence is insufficient.`,
-      prompt: `Find the intended golf course and its complete published scorecard for: "${query}". Start with the full name-and-location phrase. If there is no exact result, search likely phonetic or spelling variants while keeping the requested city/state fixed. Search for an official scorecard PDF or official course page first, then a reputable complete scorecard directory. Return the requested tee, or the course's middle/white tee when no tee was requested.`,
+      maxOutputTokens: 7000,
+      stopWhen: isStepCount(3),
+      system: `You research golf courses for a live scorecard using Google Search grounding. Always search before answering. Resolve speech-to-text errors, phonetic spellings, and small misspellings by combining the requested name with its city/state; a near-match at the exact requested location is more likely than an exact-name match in another city. Search both the user's wording and promising corrected spellings. Prefer an official course scorecard or course website, then reputable golf directories that publish a complete hole-by-hole scorecard. Gather the exact published course name, location, tee name, full-course rating, slope, and every hole's number, par, yardage, and stroke index. If the course has 18 holes, collect all 18 even if the user only plans to play nine. Use the requested tee, or the course's middle/white tee when none is specified. Never estimate factual scorecard data and never substitute another course or tee. Provide a compact evidence report with source URLs; it does not need to be JSON.`,
+      prompt: `Research the intended golf course and complete scorecard for: "${query}". Start with the full name-and-location phrase. If there is no exact result, search likely phonetic or spelling variants while keeping the requested city/state fixed. Search for an official scorecard PDF or official course page first, then a reputable complete scorecard directory.`,
       tools: {
         google_search: google.tools.googleSearch({}),
       },
     });
 
-    const structuredCourse = result.output;
+    const evidence = [
+      research.text,
+      ...research.steps.map((step) => step.text),
+      `Grounded sources: ${JSON.stringify(research.sources)}`,
+    ].filter(Boolean).join("\n\n");
+    if (!evidence.trim() || research.sources.length === 0) {
+      failCourseLookup("NoSearchEvidenceError", "Course research returned no grounded sources.");
+    }
+
+    const structured = await generateText({
+      model: "google/gemini-2.5-flash-lite",
+      maxOutputTokens: 8000,
+      output: Output.object({ schema: courseSchema }),
+      system: `Convert grounded golf-course research into the supplied scorecard structure. Use only factual course data present in the evidence. Use the exact corrected published course name and selected tee. Rating, slope, par, yards, and all holes must describe the same tee and full course. Preserve published par, yardage, and stroke index exactly. You may create concise suggestedClub and strategy values from each hole's par and yardage. Use a stable lowercase id containing course and tee. sourceUrl must be one of the grounded URLs in the evidence and must support the scorecard.`,
+      prompt: `Structure this grounded research into a complete course scorecard:\n\n${evidence}`,
+    });
+
+    const structuredCourse = structured.output;
     if (!structuredCourse) failCourseLookup("CourseStructureError", "Course research could not be converted to a complete scorecard.");
 
     const normalizedCourse = normalizeCourse(structuredCourse);
-    const groundingEvidence = JSON.stringify({ sources: result.sources, providerMetadata: result.providerMetadata });
-    if (!groundingEvidence.includes("grounding") && result.sources.length === 0) {
-      failCourseLookup("NoSearchEvidenceError", "Course research returned no grounded sources.");
-    }
     return Response.json({ course: normalizedCourse });
   } catch (error) {
     console.error("Course lookup failed", error);
