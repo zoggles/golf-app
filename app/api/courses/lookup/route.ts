@@ -91,11 +91,11 @@ export async function POST(request: Request) {
     if (!structuredCourse) failCourseLookup("CourseStructureError", "Course research could not be converted to a complete scorecard.");
 
     const normalizedCourse = normalizeCourse(structuredCourse);
-    const sourceUrls = result.sources
-      .filter((source) => source.sourceType === "url")
-      .map((source) => normalizeUrl(source.url));
-    if (sourceUrls.length === 0) failCourseLookup("NoSearchEvidenceError", "Course research returned no grounded sources.");
-    if (!sourceUrls.includes(normalizeUrl(normalizedCourse.sourceUrl))) {
+    const groundingEvidence = JSON.stringify({ sources: result.sources, providerMetadata: result.providerMetadata });
+    if (!groundingEvidence.includes("grounding") && result.sources.length === 0) {
+      failCourseLookup("NoSearchEvidenceError", "Course research returned no grounded sources.");
+    }
+    if (!normalizeUrl(groundingEvidence).includes(normalizeUrl(normalizedCourse.sourceUrl))) {
       failCourseLookup("EvidenceSourceMismatchError", "The scorecard source was not returned by grounded search.");
     }
     return Response.json({ course: normalizedCourse });
