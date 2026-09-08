@@ -1,5 +1,6 @@
-import { generateText, gateway, isStepCount, Output } from "ai";
+import { generateText, gateway, isStepCount } from "ai";
 import { z } from "zod";
+import { parseAiJson } from "@/lib/parse-ai-json";
 
 export const maxDuration = 60;
 
@@ -32,10 +33,10 @@ export async function POST(request: Request) {
     const query = typeof body.query === "string" ? body.query.trim().slice(0, 300) : "";
     if (!query) return Response.json({ error: "Tell me the course name and location." }, { status: 400 });
 
-    const { output } = await generateText({
+    const { text } = await generateText({
       model: "openai/gpt-5.6-sol",
       system: `You research golf courses for a live scorecard. Always use web search before answering. Identify the exact course from the user's wording. Prefer an official course scorecard or course website, then reputable golf directories. Return the complete 9- or 18-hole scorecard for one named tee; use White/Middle tees unless the user specifies another tee. Never fabricate missing hole pars, yardages, rating, or slope. If sources disagree, prefer the official scorecard. Suggested clubs and strategy are general, conservative guidance inferred from yardage—not factual course data. The id must be a stable lowercase slug including course and tee. sourceUrl must be the best page or PDF supporting the scorecard. If the exact course cannot be confidently identified with a complete scorecard, throw an error rather than substituting another course.`,
-      prompt: `Find and structure this golf course and tee for a scorecard: ${query}`,
+      prompt: `Find and structure this golf course and tee for a scorecard: ${query}\n\nReturn only a JSON object matching this schema:\n${JSON.stringify(z.toJSONSchema(courseSchema))}`,
       tools: {
         web_search: gateway.tools.perplexitySearch({
           maxResults: 8,
@@ -46,10 +47,9 @@ export async function POST(request: Request) {
         }),
       },
       stopWhen: isStepCount(4),
-      output: Output.object({ schema: courseSchema }),
     });
 
-    return Response.json({ course: output });
+    return Response.json({ course: parseAiJson(text, courseSchema) });
   } catch (error) {
     console.error("Course lookup failed", error);
     if (String(error).toLowerCase().includes("valid credit card")) {
