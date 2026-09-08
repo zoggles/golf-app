@@ -12,7 +12,12 @@ export function ProgressPage() {
   const data = useGolfData();
   const golferName = useSelectedGolfer()?.name ?? "Golfer";
   const completed = data.rounds.filter((round) => round.status === "completed");
-  const summaries = completed.map(summarizeRound).filter((round) => round.holesPlayed > 0);
+  // Sorted here rather than trusting the stored order, so correcting a round's
+  // date moves it in the log straight away.
+  const summaries = completed
+    .map(summarizeRound)
+    .filter((round) => round.holesPlayed > 0)
+    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
   const handicap = estimateHandicap(completed);
   const roundsById = new Map(completed.map((round) => [round.id, round]));
   const average = scoringAverage(completed);

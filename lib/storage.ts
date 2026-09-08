@@ -3,6 +3,7 @@
 import type { Course, GolfData, GolfRound, RoundEvent, RoundSegment } from "./types";
 import { getCourse, getSegmentHoles } from "./courses";
 import { golferHeaders, readSelectedGolfer, subscribeToSelectedGolfer } from "./golfer-session";
+import { shiftRoundToDate } from "./round-date";
 import {
   applyOperations,
   deriveActiveRoundId,
@@ -418,17 +419,40 @@ export function discardActiveRound(roundId: string): void {
   queueOperation({ kind: "delete-game", roundId });
 }
 
-export function updateCompletedRoundScores(roundId: string, scores: Record<number, number>): void {
+/**
+ * Corrects a round already in the books: its scores, the day it was played, or
+ * both in one write. A new round still starts today; this is for fixing history
+ * after the fact.
+ */
+export function updateCompletedRound(
+  roundId: string,
+  changes: { scores?: Record<number, number>; playedOn?: string },
+): void {
   const data = readGolfData();
   const target = data.rounds.find((round) => round.id === roundId);
   if (!target || target.status !== "completed") return;
+
+  const shifted = changes.playedOn ? shiftRoundToDate(target, changes.playedOn) : null;
+  if (!changes.scores && !shifted) return;
+
+  const text = changes.scores
+    ? shifted
+      ? `Edited the scorecard and moved the round to ${changes.playedOn}`
+      : "Edited the scorecard"
+    : `Moved the round to ${changes.playedOn}`;
   const event: RoundEvent = {
     id: createId("event"),
     at: new Date().toISOString(),
     source: "manual",
-    text: "Edited completed scorecard",
+    text,
   };
-  saveRound(data, { ...target, scores: { ...scores }, events: [event, ...target.events] });
+
+  saveRound(data, {
+    ...target,
+    ...(changes.scores ? { scores: { ...changes.scores } } : {}),
+    ...(shifted ?? {}),
+    events: [event, ...target.events],
+  });
 }
 
 export function deleteRound(roundId: string): void {

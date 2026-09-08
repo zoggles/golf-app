@@ -11,6 +11,7 @@ A mobile-first, voice-friendly golf round tracker. Golfers, rounds, and course s
 - Record until you tap stop, with pauses allowed while you think
 - Update current or past holes with general requests, including several corrections at once
 - Manual one-handed score entry and complete scorecard
+- Correct a saved round's scores and the date it was played
 - Log a finished round by photographing its paper scorecard, with a review step before it is saved
 - Supabase-backed record of every game, synced across devices and kept separate per golfer
 - Keeps scoring through dead zones and flushes to the database when signal returns
@@ -78,6 +79,19 @@ does that without a model in the loop so the rules stay testable:
 
 The card is transcribed, not interpreted: multi-player cards ask which column
 belongs to the golfer, and nothing is written until the review is confirmed.
+
+## Correcting a saved round
+
+A new round is stamped with today's date, as it always was. The scorecard for a
+saved round then lets that date be changed, for history entered after the fact.
+
+A round carries a start and a finish, and the app files it under the finish, so
+`lib/round-date.ts` shifts both by the same whole number of days rather than
+stamping a new date on each. The time of day survives, a round that ran past
+midnight still spans two days, and the shift is measured between local midnights
+so it holds across a daylight saving change. Dates are handled in the golfer's
+local time throughout — the day the app displays is the day it stores and
+exports.
 
 ## Exporting the history
 

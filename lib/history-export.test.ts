@@ -62,6 +62,27 @@ describe("buildHistoryCsv", () => {
     expect(lines[3]).toContain(",3,5,450,1,6,1,");
   });
 
+  it("files a round under the day it was played, not the day UTC says", () => {
+    // 9pm on the 30th in a western zone is already the 31st in UTC.
+    const evening = round({ completedAt: new Date(2026, 4, 30, 21, 30).toISOString() });
+    expect(rows(buildHistoryCsv([evening], GOLFER))[1].split(",")[1]).toBe("2026-05-30");
+  });
+
+  it("keeps two rounds on one day in the order they were played", () => {
+    const csv = buildHistoryCsv(
+      [
+        round({ id: "second", completedAt: "2026-05-30T19:00:00.000Z" }),
+        round({ id: "first", completedAt: "2026-05-30T15:00:00.000Z" }),
+      ],
+      GOLFER,
+    );
+    const ids = rows(csv)
+      .slice(1)
+      .map((line) => line.split(",").at(-1));
+    expect(ids.slice(0, 3)).toEqual(["first", "first", "first"]);
+    expect(ids.slice(3)).toEqual(["second", "second", "second"]);
+  });
+
   it("orders rounds oldest first so the file reads as a history", () => {
     const csv = buildHistoryCsv(
       [

@@ -7,7 +7,8 @@ import { ArrowLeft, Check, MapPin, Minus, Plus, Trash } from "@phosphor-icons/re
 import { useGolfData } from "@/hooks/use-golf-data";
 import { getSegmentHoles, segmentLabel } from "@/lib/courses";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole } from "@/lib/metrics";
-import { deleteRound, updateCompletedRoundScores } from "@/lib/storage";
+import { dateInputValue, parseDateInput, roundDateInputValue } from "@/lib/round-date";
+import { deleteRound, updateCompletedRound } from "@/lib/storage";
 import type { GolfRound } from "@/lib/types";
 
 export function RoundDetailPage({ roundId }: { roundId: string }) {
@@ -31,8 +32,13 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
   const course = round.course;
   const holes = useMemo(() => getSegmentHoles(course, round.segment), [course, round.segment]);
   const [scores, setScores] = useState<Record<number, number>>(() => ({ ...round.scores }));
+  const [playedOn, setPlayedOn] = useState(() => roundDateInputValue(round));
   const [saved, setSaved] = useState(false);
-  const isDirty = holes.some((hole) => scores[hole.number] !== round.scores[hole.number]);
+  const scoresChanged = holes.some((hole) => scores[hole.number] !== round.scores[hole.number]);
+  const dateChanged = playedOn !== roundDateInputValue(round);
+  const isDirty = scoresChanged || dateChanged;
+  // The header reads back what is about to be saved, not what is stored.
+  const shownDate = parseDateInput(playedOn) ?? new Date(round.completedAt ?? round.startedAt);
   const total = holes.reduce((sum, hole) => sum + (scores[hole.number] ?? 0), 0);
   const par = holes.reduce((sum, hole) => sum + hole.par, 0);
   const roundHandicap = estimateRoundHandicap(handicapIndex, course, round.segment);
@@ -46,7 +52,10 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
   }
 
   function saveChanges() {
-    updateCompletedRoundScores(round.id, scores);
+    updateCompletedRound(round.id, {
+      scores: scoresChanged ? scores : undefined,
+      playedOn: dateChanged ? playedOn : undefined,
+    });
     setSaved(true);
   }
 
@@ -65,12 +74,25 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
           <p className="eyebrow">COMPLETED ROUND</p>
           <h1>{course.shortName}</h1>
           <p><MapPin size={14} /> {course.location} · {segmentLabel(round.segment)} · {round.tee} tees · Round HCP {roundHandicap ?? "—"}</p>
-          <time dateTime={round.completedAt ?? round.startedAt}>{new Date(round.completedAt ?? round.startedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</time>
+          <time dateTime={playedOn}>{shownDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</time>
         </div>
         <div className="round-detail-total"><small>TOTAL</small><strong>{total}</strong><span>{formatToPar(total - par)}</span></div>
       </header>
 
       <section className="round-editor surface-card">
+        <div className="round-date-field">
+          <label htmlFor="round-played-on">Date played</label>
+          <input
+            id="round-played-on"
+            type="date"
+            value={playedOn}
+            max={dateInputValue(new Date())}
+            onChange={(event) => {
+              setSaved(false);
+              setPlayedOn(event.target.value);
+            }}
+          />
+        </div>
         <p className="round-handicap-help">Hole HCP: 1 is hardest, 18 is easiest. “+1” is a stroke allocated from your Round HCP.</p>
         <div className="round-editor-heading"><span>HOLE</span><span>PAR</span><span>HOLE HCP</span><span>YARDS</span><span>SCORE</span></div>
         {holes.map((hole) => (

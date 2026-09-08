@@ -1,5 +1,6 @@
 import { getSegmentHoles, segmentLabel } from "./courses";
 import { estimateHandicap, estimateRoundHandicap, handicapStrokesForHole } from "./metrics";
+import { dateInputValue } from "./round-date";
 import type { GolfRound } from "./types";
 
 /**
@@ -51,13 +52,25 @@ function escapeCell(value: string | number | null): string {
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
+function playedAt(round: GolfRound): string {
+  return round.completedAt ?? round.startedAt;
+}
+
+/**
+ * The local calendar day, which is the date the app shows and the one the
+ * golfer sets. Reading it off the stored UTC timestamp instead would file an
+ * evening round under the following day.
+ */
 function playedOn(round: GolfRound): string {
-  return (round.completedAt ?? round.startedAt).slice(0, 10);
+  return dateInputValue(new Date(playedAt(round)));
 }
 
 /** Every round the app holds for one golfer, oldest first, one row per hole. */
 export function buildHistoryCsv(rounds: GolfRound[], golferName: string): string {
-  const ordered = [...rounds].sort((left, right) => playedOn(left).localeCompare(playedOn(right)));
+  // Two rounds on the same day keep the order they were played in.
+  const ordered = [...rounds].sort(
+    (left, right) => new Date(playedAt(left)).getTime() - new Date(playedAt(right)).getTime(),
+  );
   const handicapIndex = estimateHandicap(rounds);
   const rows: string[] = [COLUMNS.join(",")];
 
@@ -66,7 +79,6 @@ export function buildHistoryCsv(rounds: GolfRound[], golferName: string): string
     const scored = holes.filter((hole) => round.scores[hole.number] != null);
     const roundStrokes = scored.reduce((total, hole) => total + round.scores[hole.number], 0);
     const roundPar = scored.reduce((total, hole) => total + hole.par, 0);
-    const playedAt = round.completedAt ?? round.startedAt;
     const roundHandicap = estimateRoundHandicap(handicapIndex, round.course, round.segment);
 
     for (const hole of holes) {
@@ -78,7 +90,7 @@ export function buildHistoryCsv(rounds: GolfRound[], golferName: string): string
         [
           golferName,
           playedOn(round),
-          playedAt,
+          playedAt(round),
           round.status,
           round.courseName,
           round.location,

@@ -212,6 +212,10 @@ a { color: inherit; text-decoration: none; }
 .round-detail-total strong { font-size: 42px; line-height: 1; }
 .round-detail-total span { color: var(--green); font-size: 18px; padding-bottom: 3px; }
 .round-editor { overflow: hidden; }
+.round-date-field { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
+.round-date-field label { color: var(--muted); font-size: 12px; }
+.round-date-field input { min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 11px; background: rgba(0,0,0,.2); color: var(--ink); outline: none; cursor: pointer; }
+.round-date-field input:focus { border-color: rgba(173,240,95,.4); }
 .round-handicap-help { margin: 0; padding: 12px 22px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 10px; }
 .round-editor-heading, .round-editor-row { display: grid; grid-template-columns: 62px .7fr .9fr 1fr 160px; align-items: center; gap: 12px; padding: 12px 22px; }
 .round-editor-heading { background: rgba(0,0,0,.18); color: var(--faint); font-size: 9px; letter-spacing: .14em; }
@@ -307,6 +311,7 @@ a { color: inherit; text-decoration: none; }
   .handicap-card { grid-template-columns: 1fr; }
   .handicap-copy { border-left: 0; border-top: 1px solid var(--line); padding: 20px 0 0; }
   .round-editor-heading, .round-editor-row { grid-template-columns: 36px 34px 54px 1fr 110px; padding: 10px 12px; gap: 8px; }
+  .round-date-field { padding: 12px; }
   .round-detail-header { align-items: center; }
   .progress-title-row { flex-wrap: wrap; gap: 16px; }
   .golfer-gate { padding: 30px 20px 24px; }
