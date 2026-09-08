@@ -29,6 +29,12 @@ const courseSchema = z.object({
 
 type Course = z.infer<typeof courseSchema>;
 
+function failCourseLookup(name: string, message: string): never {
+  const error = new Error(message);
+  error.name = name;
+  throw error;
+}
+
 function parseCourseCandidates(candidates: string[]): Course | null {
   for (const candidate of candidates) {
     if (!candidate.trim()) continue;
@@ -46,7 +52,7 @@ function normalizeCourse(course: Course): Course {
   const validLength = holes.length === 9 || holes.length === 18;
   const sequential = holes.every((hole, index) => hole.number === index + 1);
   if (!validLength || !sequential) {
-    throw new Error("Course scorecard must contain sequential holes for a complete 9- or 18-hole round.");
+    failCourseLookup("InvalidScorecardError", "Course scorecard must contain sequential holes for a complete 9- or 18-hole round.");
   }
 
   return {
@@ -61,7 +67,7 @@ function verifyCourseEvidence(course: Course, evidenceJson: string): void {
   const requiredFacts = [course.sourceUrl, String(course.rating), String(course.slope), ...course.holes.map((hole) => String(hole.yards))];
   const missingFacts = requiredFacts.filter((fact) => !evidenceJson.includes(fact));
   if (missingFacts.length > 0) {
-    throw new Error("The structured scorecard contains facts that were not present in the course research.");
+    failCourseLookup("EvidenceMismatchError", "The structured scorecard contains facts that were not present in the course research.");
   }
 }
 
@@ -94,7 +100,7 @@ export async function POST(request: Request) {
         output: result.output,
       })),
     ]);
-    if (evidence.length === 0) throw new Error("Course research returned no usable evidence.");
+    if (evidence.length === 0) failCourseLookup("NoSearchEvidenceError", "Course research returned no usable evidence.");
 
     const evidenceJson = JSON.stringify(evidence).slice(0, 60000);
     const structured = await generateText({
@@ -106,7 +112,7 @@ export async function POST(request: Request) {
       structured.text,
       ...structured.steps.toReversed().map((step) => step.text),
     ]);
-    if (!structuredCourse) throw new Error("Course research could not be converted to a complete scorecard.");
+    if (!structuredCourse) failCourseLookup("CourseStructureError", "Course research could not be converted to a complete scorecard.");
 
     const normalizedCourse = normalizeCourse(structuredCourse);
     verifyCourseEvidence(normalizedCourse, evidenceJson);
