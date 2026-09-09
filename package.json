@@ -8,11 +8,22 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "native:build": "vite build --config vite.native.config.mts",
+    "native:preview": "vite preview --config vite.native.config.mts",
+    "android:sync": "npm run native:build && cap sync android",
+    "android:open": "npm run android:sync && cap open android",
+    "android:run": "npm run android:sync && cap run android",
+    "android:bundle": "npm run android:sync && cap build android --androidreleasetype AAB"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.75",
     "@ai-sdk/google": "^4.0.64",
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/camera": "^8.2.4",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/status-bar": "^8.0.3",
     "@phosphor-icons/react": "latest",
     "ai": "^7.0.93",
     "next": "latest",
@@ -21,12 +32,15 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.1",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "^6.1.1",
     "eslint": "latest",
     "eslint-config-next": "latest",
     "typescript": "latest",
+    "vite": "^8.2.2",
     "vitest": "latest"
   }
 }

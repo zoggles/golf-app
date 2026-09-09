@@ -1,6 +1,7 @@
 "use client";
 
 import { GOLFER_HEADER, type Golfer } from "./golfers";
+import { apiUrl } from "./api-url";
 
 /**
  * Which golfer this browser is acting as.
@@ -101,7 +102,7 @@ export async function refreshRoster(): Promise<void> {
   if (rosterLoading) return;
   rosterLoading = true;
   try {
-    const response = await fetch("/api/golfers", { cache: "no-store" });
+    const response = await fetch(apiUrl("/api/golfers"), { cache: "no-store" });
     const result = (await response.json()) as { golfers?: Golfer[]; error?: string };
     if (!response.ok || !result.golfers) throw new Error(result.error || "Could not load golfers.");
     // A golfer removed elsewhere would otherwise leave this browser pointing at
@@ -142,7 +143,7 @@ function mergeIntoRoster(golfer: Golfer): void {
 }
 
 export async function createGolfer(name: string): Promise<Golfer> {
-  const response = await fetch("/api/golfers", {
+  const response = await fetch(apiUrl("/api/golfers"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -154,7 +155,7 @@ export async function createGolfer(name: string): Promise<Golfer> {
 }
 
 export async function renameSelectedGolfer(name: string): Promise<Golfer> {
-  const response = await fetch("/api/golfers", {
+  const response = await fetch(apiUrl("/api/golfers"), {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...golferHeaders() },
     body: JSON.stringify({ name }),

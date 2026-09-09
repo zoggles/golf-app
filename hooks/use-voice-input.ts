@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { apiUrl } from "@/lib/api-url";
 
 const PREFERRED_AUDIO_TYPES = [
   "audio/webm;codecs=opus",
@@ -42,7 +43,7 @@ function uploadRecording(audio: Blob, filename: string, onUploaded: () => void):
     const form = new FormData();
     form.append("audio", audio, filename);
     const request = new XMLHttpRequest();
-    request.open("POST", "/api/voice");
+    request.open("POST", apiUrl("/api/voice"));
     request.responseType = "json";
     request.timeout = 60_000;
     request.upload.onload = onUploaded;

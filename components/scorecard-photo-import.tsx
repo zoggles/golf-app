@@ -2,6 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Capacitor } from "@capacitor/core";
+import type { Photo } from "@capacitor/camera";
 import { ArrowClockwise, Camera, CircleNotch, Info, MapPin, UploadSimple, Warning } from "@phosphor-icons/react";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { getSegmentHoles, segmentLabel } from "@/lib/courses";
@@ -13,6 +15,7 @@ import {
   type ScorecardReading,
 } from "@/lib/scorecard-import";
 import { importCompletedRound } from "@/lib/storage";
+import { apiUrl } from "@/lib/api-url";
 
 /**
  * Logs a round from a photograph of a paper scorecard: shoot the card, check
@@ -47,7 +50,7 @@ export function ScorecardPhotoImport() {
     try {
       const body = new FormData();
       body.append("photo", file);
-      const response = await fetch("/api/scorecard-photo", { method: "POST", body });
+      const response = await fetch(apiUrl("/api/scorecard-photo"), { method: "POST", body });
       const result = (await response.json()) as { reading?: unknown; error?: string };
       if (!response.ok) throw new Error(result.error || "I couldn’t read that scorecard.");
       setReading(scorecardReadingSchema.parse(result.reading));
@@ -56,6 +59,40 @@ export function ScorecardPhotoImport() {
     } finally {
       setIsReading(false);
     }
+  }
+
+  function photoToFile(photo: Photo): File {
+    if (!photo.base64String) throw new Error("The selected photo could not be opened.");
+    const decoded = window.atob(photo.base64String);
+    const bytes = new Uint8Array(decoded.length);
+    for (let index = 0; index < decoded.length; index += 1) bytes[index] = decoded.charCodeAt(index);
+    const extension = photo.format || "jpeg";
+    return new File([bytes], `scorecard.${extension}`, { type: `image/${extension}` });
+  }
+
+  async function chooseNativePhoto(source: "camera" | "photos") {
+    try {
+      const { Camera: NativeCamera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+      const photo = await NativeCamera.getPhoto({
+        source: source === "camera" ? CameraSource.Camera : CameraSource.Photos,
+        resultType: CameraResultType.Base64,
+        quality: 90,
+        correctOrientation: true,
+      });
+      await readPhoto(photoToFile(photo));
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      if (/cancel/i.test(message)) return;
+      setError(message || "The photo picker could not be opened.");
+    }
+  }
+
+  function openPhotoSource(source: "camera" | "photos") {
+    if (Capacitor.isNativePlatform()) {
+      void chooseNativePhoto(source);
+      return;
+    }
+    (source === "camera" ? cameraInput : fileInput).current?.click();
   }
 
   function saveRound() {
@@ -102,11 +139,11 @@ export function ScorecardPhotoImport() {
             what I found before anything is saved.
           </p>
           <div className="scan-actions">
-            <button className="primary-button" type="button" onClick={() => cameraInput.current?.click()} disabled={isReading}>
+            <button className="primary-button" type="button" onClick={() => openPhotoSource("camera")} disabled={isReading}>
               {isReading ? <span className="spin"><CircleNotch size={19} weight="bold" /></span> : <Camera size={19} weight="fill" />}
               {isReading ? "Reading the card…" : "Take a photo"}
             </button>
-            <button className="secondary-button" type="button" onClick={() => fileInput.current?.click()} disabled={isReading}>
+            <button className="secondary-button" type="button" onClick={() => openPhotoSource("photos")} disabled={isReading}>
               <UploadSimple size={18} /> Choose a photo
             </button>
           </div>

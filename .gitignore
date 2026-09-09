@@ -4,7 +4,12 @@
 node_modules
 .next
 out
+dist-native
 coverage
 *.log
 *.tsbuildinfo
 .DS_Store
+android/.gradle
+android/local.properties
+*.jks
+*.keystore

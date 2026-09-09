@@ -18,6 +18,7 @@ A mobile-first, voice-friendly golf round tracker. Golfers, rounds, and course s
 - Progress dashboard with scoring, best-round, and handicap-trend metrics
 - Export the full round history to a CSV spreadsheet
 - Responsive UI for phone and desktop browsers
+- Checked-in Capacitor Android project that reuses the same UI and Vercel backend
 
 ## Local development
 
@@ -27,6 +28,17 @@ npm run dev
 ```
 
 Then open [http://localhost:3000](http://localhost:3000).
+
+## Android
+
+The Vercel site remains the primary web build. A separate Capacitor/Vite target bundles the same screens locally for Android and sends API requests to the existing Vercel backend.
+
+```bash
+npm run android:sync
+npm run android:open
+```
+
+See [ANDROID.md](./ANDROID.md) for Android Studio setup, device testing, architecture, signing, and the future Google Play `.aab` workflow.
 
 Course research, AI command interpretation, and cloud transcription use Vercel AI Gateway through the linked project's OIDC token. The Vercel team must have AI Gateway billing enabled. Browser speech recognition and the local command parser provide a fallback for scoring when available.
 

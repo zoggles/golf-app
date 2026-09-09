@@ -1,6 +1,7 @@
 "use client";
 
 import type { Course, GolfData, GolfRound, HoleMetrics, RoundEvent, RoundSegment } from "./types";
+import { apiUrl } from "./api-url";
 import { getCourse, getSegmentHoles } from "./courses";
 import { golferHeaders, readSelectedGolfer, subscribeToSelectedGolfer } from "./golfer-session";
 import { shiftRoundToDate } from "./round-date";
@@ -151,18 +152,18 @@ async function sendOperation(operation: PendingOperation): Promise<void> {
   const headers = { "Content-Type": "application/json", ...golferHeaders(operation.golferId) };
   const request =
     operation.kind === "save-course"
-      ? fetch("/api/courses", {
+      ? fetch(apiUrl("/api/courses"), {
           method: "POST",
           headers,
           body: JSON.stringify(operation.course),
         })
       : operation.kind === "save-game"
-        ? fetch("/api/games", {
+        ? fetch(apiUrl("/api/games"), {
             method: "POST",
             headers,
             body: JSON.stringify(operation.round),
           })
-        : fetch(`/api/games?id=${encodeURIComponent(operation.roundId)}`, { method: "DELETE", headers });
+        : fetch(apiUrl(`/api/games?id=${encodeURIComponent(operation.roundId)}`), { method: "DELETE", headers });
 
   const response = await request;
   if (response.ok) return;
@@ -223,7 +224,7 @@ async function hydrateFromServer(): Promise<void> {
   const golferId = currentGolferId();
   if (!golferId) return;
   try {
-    const response = await fetch("/api/golf-data", { cache: "no-store", headers: golferHeaders(golferId) });
+    const response = await fetch(apiUrl("/api/golf-data"), { cache: "no-store", headers: golferHeaders(golferId) });
     if (!response.ok) return;
     const snapshot = normalizeData(await response.json());
     if (!snapshot) return;
