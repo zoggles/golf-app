@@ -1,18 +1,12 @@
 "use client";
 
-import { GOLFER_HEADER, type Golfer } from "./golfers";
+import type { Golfer } from "./golfers";
 import { apiUrl } from "./api-url";
+import { authHeaders } from "./auth-client";
 
-/**
- * Which golfer this browser is acting as.
- *
- * The selection is remembered locally, including the name, so the app opens
- * straight into the right history even with no signal. When sign-in arrives,
- * this module is what gets replaced: the rest of the app only asks it who the
- * current golfer is and for the headers to send.
- */
+/** Cached display profile. Authorization always comes from the verified session. */
 
-const SELECTED_KEY = "fairway-log:golfer:v1";
+const SELECTED_KEY = "caddy-stack:account:v2";
 const CHANGE_EVENT = "fairway-log:golfer-change";
 
 let selected: Golfer | null = null;
@@ -27,7 +21,7 @@ function restore(): void {
     if (parsed && typeof parsed === "object") {
       const candidate = parsed as Partial<Golfer>;
       if (typeof candidate.id === "string" && typeof candidate.name === "string") {
-        selected = { id: candidate.id, name: candidate.name };
+        selected = { id: candidate.id, name: candidate.name, accountId: candidate.accountId };
       }
     }
   } catch {
@@ -70,18 +64,13 @@ export function subscribeToSelectedGolfer(onChange: () => void): () => void {
   };
 }
 
-/** Identifies the caller on every request that reads or writes stored rounds. */
+/** Attaches the verified Supabase session to every protected request. */
 export function golferHeaders(golferId?: string): Record<string, string> {
-  const id = golferId ?? readSelectedGolfer()?.id;
-  return id ? { [GOLFER_HEADER]: id } : {};
+  void golferId;
+  return authHeaders();
 }
 
-/**
- * The roster everyone can be switched to.
- *
- * It is a subscribed store rather than per-component state so the gate and the
- * switcher always agree, and so one fetch serves both. Subscribing loads it.
- */
+/** The one golf profile owned by the signed-in account. */
 export interface RosterState {
   golfers: Golfer[] | null;
   error: string | null;
@@ -102,7 +91,7 @@ export async function refreshRoster(): Promise<void> {
   if (rosterLoading) return;
   rosterLoading = true;
   try {
-    const response = await fetch(apiUrl("/api/golfers"), { cache: "no-store" });
+    const response = await fetch(apiUrl("/api/golfers"), { cache: "no-store", headers: authHeaders() });
     const result = (await response.json()) as { golfers?: Golfer[]; error?: string };
     if (!response.ok || !result.golfers) throw new Error(result.error || "Could not load golfers.");
     // A golfer removed elsewhere would otherwise leave this browser pointing at
@@ -128,8 +117,12 @@ export function readRoster(): RosterState {
 export function subscribeToRoster(onChange: () => void): () => void {
   if (typeof window === "undefined") return () => undefined;
   rosterListeners.add(onChange);
-  if (rosterSnapshot.golfers === null) void refreshRoster();
   return () => void rosterListeners.delete(onChange);
+}
+
+export function clearGolferSession(): void {
+  selectGolfer(null);
+  publishRoster(EMPTY_ROSTER);
 }
 
 /** Keeps the roster current without a round trip after a local change. */
@@ -140,18 +133,6 @@ function mergeIntoRoster(golfer: Golfer): void {
     golfers: known ? existing.map((item) => (item.id === golfer.id ? golfer : item)) : [...existing, golfer],
     error: null,
   });
-}
-
-export async function createGolfer(name: string): Promise<Golfer> {
-  const response = await fetch(apiUrl("/api/golfers"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
-  });
-  const result = (await response.json()) as { golfer?: Golfer; error?: string };
-  if (!response.ok || !result.golfer) throw new Error(result.error || "Could not add that golfer.");
-  mergeIntoRoster(result.golfer);
-  return result.golfer;
 }
 
 export async function renameSelectedGolfer(name: string): Promise<Golfer> {

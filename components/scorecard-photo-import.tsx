@@ -16,6 +16,7 @@ import {
 } from "@/lib/scorecard-import";
 import { importCompletedRound } from "@/lib/storage";
 import { apiUrl } from "@/lib/api-url";
+import { authHeaders } from "@/lib/auth-client";
 
 /**
  * Logs a round from a photograph of a paper scorecard: shoot the card, check
@@ -50,7 +51,7 @@ export function ScorecardPhotoImport() {
     try {
       const body = new FormData();
       body.append("photo", file);
-      const response = await fetch(apiUrl("/api/scorecard-photo"), { method: "POST", body });
+           const response = await fetch(apiUrl("/api/scorecard-photo"), { method: "POST", headers: authHeaders(), body });
       const result = (await response.json()) as { reading?: unknown; error?: string };
       if (!response.ok) throw new Error(result.error || "I couldn’t read that scorecard.");
       setReading(scorecardReadingSchema.parse(result.reading));

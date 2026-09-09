@@ -21,9 +21,9 @@ import {
  * updates the mirror, then queues an idempotent write that drains to the
  * database as soon as the network allows.
  *
- * Everything here is scoped to the selected golfer. The mirror is kept per
- * golfer so switching shows the right history instantly and offline, while the
- * queue is shared so one golfer's unsent rounds still drain after a switch.
+ * Everything here is scoped to the authenticated golfer. The mirror remains
+ * per golfer for offline use, and queued writes only drain while that same
+ * golfer is signed in.
  */
 
 const CACHE_PREFIX = "fairway-log:cache:v2:";
@@ -147,8 +147,8 @@ function scheduleRetry(): void {
 
 /** Resolves once the write has landed; throws when it is worth retrying. */
 async function sendOperation(operation: PendingOperation): Promise<void> {
-  // The queued golfer travels with the write, so a round logged before a switch
-  // still lands in the history it was played for.
+  // The server ignores the legacy golfer header and derives ownership from the
+  // bearer token. flushQueue therefore only calls this for the signed-in golfer.
   const headers = { "Content-Type": "application/json", ...golferHeaders(operation.golferId) };
   const request =
     operation.kind === "save-course"
@@ -171,7 +171,7 @@ async function sendOperation(operation: PendingOperation): Promise<void> {
   // A 4xx means this payload will never be accepted; dropping it keeps the queue
   // from blocking every later write behind one bad record. Timeouts and rate
   // limits are the exception — those are worth another try.
-  if (response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429) {
+  if (response.status >= 400 && response.status < 500 && ![401, 403, 408, 429].includes(response.status)) {
     console.error("Dropping a golf write the database rejected", operation.kind, await response.text());
     return;
   }
@@ -194,7 +194,10 @@ async function flushQueue(): Promise<void> {
   flushing = true;
   try {
     while (queue.length > 0) {
-      const operation = queue[0];
+      const golferId = currentGolferId();
+      if (!golferId) break;
+      const operation = queue.find((item) => item.golferId === golferId);
+      if (!operation) break;
       await sendOperation(operation);
       const index = queue.indexOf(operation);
       // A score logged while this request was in flight collapses into the same
@@ -395,6 +398,17 @@ export function updateRoundScore(
     scores: { ...target.scores, [holeNumber]: strokes },
     events: [event, ...target.events],
   });
+}
+
+export function clearLocalGolfDataForGolfer(golferId: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(cacheKey(golferId));
+  queue = (readJson<PendingOperation[]>(QUEUE_KEY) ?? queue).filter((operation) => operation.golferId !== golferId);
+  persistQueue();
+  if (cachedGolferId === golferId) {
+    cachedData = EMPTY_GOLF_DATA;
+    emitChange();
+  }
 }
 
 export function updateRoundHoleMetrics(

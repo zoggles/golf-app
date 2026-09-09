@@ -2,6 +2,9 @@ import { generateText } from "ai";
 import { z } from "zod";
 import { parseAiJson } from "@/lib/parse-ai-json";
 import { scorecardReadingSchema } from "@/lib/scorecard-import";
+import { requireAuthUser } from "@/lib/auth-server";
+import { AuthenticationError } from "@/lib/auth-token";
+import { persistenceErrorResponse } from "@/lib/api-errors";
 
 export const maxDuration = 120;
 
@@ -11,6 +14,7 @@ const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "
 /** Reads a photographed paper scorecard into structured holes and player columns. */
 export async function POST(request: Request) {
   try {
+    await requireAuthUser(request);
     const form = await request.formData();
     const photo = form.get("photo");
     if (!(photo instanceof File)) return Response.json({ error: "No scorecard photo received." }, { status: 400 });
@@ -26,6 +30,7 @@ export async function POST(request: Request) {
     return Response.json({ reading: await readCard(image, mediaType) });
   } catch (error) {
     console.error("Scorecard photo read failed", error);
+    if (error instanceof AuthenticationError) return persistenceErrorResponse(error);
     const diagnosticCode = error instanceof Error ? error.name : "UnknownError";
     if (String(error).toLowerCase().includes("valid credit card")) {
       return Response.json({ error: "Scorecard scanning is awaiting Vercel billing setup.", setupRequired: true }, { status: 503 });

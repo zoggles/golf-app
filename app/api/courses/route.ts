@@ -1,5 +1,5 @@
 import { persistenceErrorResponse } from "@/lib/api-errors";
-import { resolveGolferId } from "@/lib/golfers";
+import { resolveAuthenticatedGolferId } from "@/lib/auth-server";
 import { parseCoursePayload } from "@/lib/golf-payloads";
 import { saveCourseRow } from "@/lib/supabase-server";
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request) {
   try {
-    resolveGolferId(request);
+    await resolveAuthenticatedGolferId(request);
     const course = parseCoursePayload(await request.json());
     return Response.json({ course: await saveCourseRow(course) });
   } catch (cause) {

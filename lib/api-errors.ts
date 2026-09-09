@@ -1,13 +1,11 @@
 import { z } from "zod";
-import { MissingGolferError } from "./golfers";
+import { AuthenticationError } from "./auth-token";
 import { SupabaseConfigError, SupabaseRequestError } from "./supabase-server";
 
 /** Turns persistence failures into a consistent JSON error response. */
 export function persistenceErrorResponse(cause: unknown): Response {
-  if (cause instanceof MissingGolferError) {
-    // Today this only happens when the browser has no golfer selected. Once
-    // there are accounts, this is the shape a rejected session takes.
-    return Response.json({ error: "Pick a golfer before saving a round." }, { status: 400 });
+  if (cause instanceof AuthenticationError) {
+    return Response.json({ error: cause.message }, { status: 401 });
   }
   if (cause instanceof z.ZodError) {
     return Response.json({ error: "Invalid payload.", issues: cause.issues }, { status: 400 });

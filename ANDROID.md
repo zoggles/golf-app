@@ -5,7 +5,7 @@ Caddy Stack has two build targets that share the same React screens and data mod
 - `npm run build` is the existing Next.js application deployed by Vercel. Nothing about the Vercel deployment path changes.
 - `npm run native:build` creates a local web bundle in `dist-native`, and Capacitor packages that bundle in the checked-in `android` project.
 
-The installed app does not load the live website in a WebView. Its interface is bundled with the app, while requests to `/api/*` are sent to `https://golf-app-mu-nine.vercel.app`. Supabase and AI credentials therefore remain in Vercel server functions and are never packaged in Android.
+The installed app does not load the live website in a WebView. Its interface is bundled with the app, while requests to `/api/*` are sent to `https://caddy-stack.vercel.app`. Supabase and AI credentials therefore remain in Vercel server functions and are never packaged in Android.
 
 ## One-time workstation setup
 

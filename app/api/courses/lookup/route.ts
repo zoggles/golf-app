@@ -1,6 +1,9 @@
 import { google } from "@ai-sdk/google";
 import { generateText, isStepCount, Output } from "ai";
 import { z } from "zod";
+import { requireAuthUser } from "@/lib/auth-server";
+import { AuthenticationError } from "@/lib/auth-token";
+import { persistenceErrorResponse } from "@/lib/api-errors";
 
 export const maxDuration = 120;
 
@@ -78,6 +81,7 @@ function normalizeCourse(course: Course, sources: GroundedSource[]): Course {
 
 export async function POST(request: Request) {
   try {
+    await requireAuthUser(request);
     const body = (await request.json()) as { query?: unknown };
     const query = typeof body.query === "string" ? body.query.trim().slice(0, 300) : "";
     if (!query) return Response.json({ error: "Tell me the course name and location." }, { status: 400 });
@@ -119,6 +123,7 @@ export async function POST(request: Request) {
     return Response.json({ course: normalizedCourse });
   } catch (error) {
     console.error("Course lookup failed", error);
+    if (error instanceof AuthenticationError) return persistenceErrorResponse(error);
     const diagnosticCode = error instanceof Error ? error.name : "UnknownError";
     if (/valid credit card|free tier users do not have access/i.test(String(error))) {
       return Response.json(

@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 
-export const CADDY_STACK_API_ORIGIN = "https://golf-app-mu-nine.vercel.app";
+export const CADDY_STACK_API_ORIGIN = "https://caddy-stack.vercel.app";
 
 export function resolveApiUrl(path: string, isNative: boolean): string {
   if (!path.startsWith("/")) throw new Error("API paths must start with a slash.");

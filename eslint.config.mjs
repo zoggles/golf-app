@@ -10,6 +10,7 @@ export default defineConfig([
     "out/**",
     "dist-native/**",
     "android/app/src/main/assets/public/**",
+    "android/**/build/**",
     "coverage/**",
     "next-env.d.ts",
   ]),

@@ -1,6 +1,9 @@
 import { generateText } from "ai";
 import { z } from "zod";
 import { parseAiJson } from "@/lib/parse-ai-json";
+import { requireAuthUser } from "@/lib/auth-server";
+import { AuthenticationError } from "@/lib/auth-token";
+import { persistenceErrorResponse } from "@/lib/api-errors";
 
 const commandSchema = z.object({
   updates: z.array(z.object({
@@ -20,6 +23,7 @@ const commandSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    await requireAuthUser(request);
     const body = (await request.json()) as {
       text?: unknown;
       currentHole?: unknown;
@@ -42,6 +46,7 @@ export async function POST(request: Request) {
     return Response.json(parseAiJson(resultText, commandSchema));
   } catch (error) {
     console.error("Round command failed", error);
+    if (error instanceof AuthenticationError) return persistenceErrorResponse(error);
     const diagnosticCode = error instanceof Error ? error.name : "UnknownError";
     if (String(error).toLowerCase().includes("valid credit card")) {
       return Response.json({ error: "AI interpretation is awaiting Vercel billing setup.", setupRequired: true }, { status: 503 });
