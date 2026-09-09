@@ -31,7 +31,10 @@ function supabase(): SupabaseClient {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      // The browser callback is exchanged explicitly below. Leaving this on made
+      // supabase-js exchange the same single-use code a second time ~40ms later,
+      // and that failure discarded the session the first exchange had stored.
+      detectSessionInUrl: false,
       flowType: "pkce",
     },
   });
@@ -62,10 +65,25 @@ async function finishNativeSignIn(callbackUrl: string) {
   }
 }
 
+/** Exchanges a browser OAuth callback exactly once, then cleans the URL. */
+async function completeBrowserSignIn(): Promise<void> {
+  const url = new URL(window.location.href);
+  const code = url.searchParams.get("code");
+  const failure = url.searchParams.get("error_description") ?? url.searchParams.get("error");
+  if (!code && !failure) return;
+  for (const param of ["code", "error", "error_description", "error_code", "state"]) {
+    url.searchParams.delete(param);
+  }
+  window.history.replaceState(null, "", url.toString());
+  if (failure) throw new Error(failure);
+  const { error } = await supabase().auth.exchangeCodeForSession(code as string);
+  if (error) throw error;
+}
+
 async function restoreSession() {
   const auth = supabase().auth;
-  // supabase-js exchanges browser PKCE callbacks during client initialization.
-  // Native callbacks arrive through appUrlOpen and are exchanged explicitly.
+  // Browser callbacks are exchanged here; native ones arrive via appUrlOpen.
+  if (!Capacitor.isNativePlatform()) await completeBrowserSignIn();
   const { data, error } = await auth.getSession();
   if (error) throw error;
   publish({ session: data.session, error: null });
