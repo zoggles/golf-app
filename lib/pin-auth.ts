@@ -39,6 +39,18 @@ export function pinAccountSlug(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+/**
+ * The derived address is an implementation detail nobody typed, so the UI shows
+ * it to no one. Metadata is checked first; the domain is the durable fallback.
+ */
+export function isPinAccount(user: {
+  email?: string;
+  user_metadata?: Record<string, unknown> | null;
+}): boolean {
+  if (user.user_metadata?.pin_login === true) return true;
+  return (user.email ?? "").toLowerCase().endsWith(`@${PIN_ACCOUNT_DOMAIN}`);
+}
+
 export function pinAccountEmail(name: string): string {
   const slug = pinAccountSlug(name);
   if (!slug) throw new Error("Use at least one letter or number in your name.");

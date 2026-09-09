@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, CaretDown, Check, GoogleLogo, Key, NotePencil, SignOut, User } from "@phosphor-icons/react";
+import { ArrowLeft, CaretDown, Check, GoogleLogo, Key, NotePencil, SignOut, Trash, User } from "@phosphor-icons/react";
 import { useAuth } from "@/hooks/use-auth";
 import { useGolferRoster } from "@/hooks/use-golfer-roster";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { clearGolferSession, refreshRoster, renameSelectedGolfer, selectGolfer } from "@/lib/golfer-session";
 import { signInWithGoogle, signInWithPin, signOut } from "@/lib/auth-client";
-import { PIN_LENGTH } from "@/lib/pin-auth";
+import { PIN_LENGTH, isPinAccount } from "@/lib/pin-auth";
 import { deleteCurrentAccount } from "@/lib/account-client";
 import type { Golfer } from "@/lib/golfers";
 
@@ -191,19 +191,26 @@ export function GolferSwitcher() {
             <>
               <div className="account-summary">
                 <span className="golfer-initials">{initials(golfer.name)}</span>
-                <div><strong>{golfer.name}</strong><small>{session.user.email}</small></div>
-              </div>
-              <button type="button" className="golfer-secondary-action" onClick={() => setRenaming(true)}><NotePencil size={15} /> Rename profile</button>
-              <button type="button" className="golfer-secondary-action" onClick={() => void logout()} disabled={busy}><SignOut size={15} /> {busy ? "Signing out…" : "Sign out"}</button>
-              {confirmingDelete ? (
-                <div className="delete-confirmation">
-                  <p>This permanently deletes your account and every saved round.</p>
-                  <button type="button" onClick={() => void deleteAccount()} disabled={busy}>{busy ? "Deleting…" : "Permanently delete"}</button>
-                  <button type="button" onClick={() => setConfirmingDelete(false)} disabled={busy}>Cancel</button>
+                <div>
+                  <strong>{golfer.name}</strong>
+                  <small>{isPinAccount(session.user) ? "Signed in with a PIN" : session.user.email}</small>
                 </div>
-              ) : (
-                <button type="button" className="golfer-secondary-action danger-action" onClick={() => setConfirmingDelete(true)}>Delete account</button>
-              )}
+              </div>
+              <div className="golfer-actions">
+                <button type="button" className="golfer-secondary-action" onClick={() => setRenaming(true)}><NotePencil size={16} /> Rename profile</button>
+                <button type="button" className="golfer-secondary-action" onClick={() => void logout()} disabled={busy}><SignOut size={16} /> {busy ? "Signing out…" : "Sign out"}</button>
+                {confirmingDelete ? (
+                  <div className="delete-confirmation">
+                    <p>This permanently deletes your account and every saved round.</p>
+                    <div className="delete-confirmation-actions">
+                      <button type="button" onClick={() => void deleteAccount()} disabled={busy}>{busy ? "Deleting…" : "Permanently delete"}</button>
+                      <button type="button" onClick={() => setConfirmingDelete(false)} disabled={busy}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" className="golfer-secondary-action danger-action" onClick={() => setConfirmingDelete(true)}><Trash size={16} /> Delete account</button>
+                )}
+              </div>
               {error ? <p className="voice-error">{error}</p> : null}
             </>
           )}

@@ -317,7 +317,7 @@ a { color: inherit; text-decoration: none; }
 .golfer-initials { width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: rgba(173,240,95,.14); color: var(--green); display: grid; place-items: center; font-size: 12px; font-weight: 750; letter-spacing: .02em; }
 .golfer-panel { position: absolute; top: calc(100% + 9px); right: 0; z-index: 40; width: min(300px, calc(100vw - 34px)); padding: 18px; border-radius: 18px; background: linear-gradient(145deg, #16271c, #0d1912); box-shadow: 0 22px 60px rgba(0,0,0,.55); }
 .golfer-panel .eyebrow { margin-bottom: 12px; }
-.account-summary { display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 13px; background: rgba(0,0,0,.18); }
+.account-summary { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; background: rgba(0,0,0,.22); }
 .account-summary > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .account-summary strong, .account-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-summary strong { font-size: 14px; }
@@ -328,12 +328,22 @@ a { color: inherit; text-decoration: none; }
 .golfer-option.selected { border-color: rgba(173,240,95,.4); background: rgba(173,240,95,.06); }
 .golfer-option strong { min-width: 0; flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .golfer-option > svg { color: var(--green); }
-.golfer-secondary-action { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
-.golfer-secondary-action:hover { color: var(--ink); }
-.danger-action { color: #e99a93; }
-.delete-confirmation { margin-top: 14px; padding: 12px; border: 1px solid rgba(233,154,147,.3); border-radius: 11px; background: rgba(130,35,27,.12); }
-.delete-confirmation p { margin: 0 0 10px; color: #efbbb6; font-size: 12px; line-height: 1.45; }
-.delete-confirmation button { margin-right: 10px; border: 0; background: transparent; color: #efbbb6; font-size: 12px; cursor: pointer; }
+.golfer-actions { display: grid; gap: 2px; margin-top: 14px; }
+.golfer-secondary-action { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 40px; margin: 0; padding: 0 11px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background 140ms ease, color 140ms ease; }
+.golfer-secondary-action > svg { flex-shrink: 0; color: var(--faint); transition: color 140ms ease; }
+.golfer-secondary-action:hover:not(:disabled) { background: rgba(222,238,225,.06); color: var(--ink); }
+.golfer-secondary-action:hover:not(:disabled) > svg { color: currentColor; }
+.golfer-secondary-action:disabled { opacity: .5; cursor: not-allowed; }
+.danger-action { position: relative; margin-top: 9px; color: #e99a93; }
+.danger-action::before { content: ""; position: absolute; left: 11px; right: 11px; top: -5px; height: 1px; background: var(--line); }
+.danger-action:hover:not(:disabled) { background: rgba(233,154,147,.1); color: #f4b8b2; }
+.delete-confirmation { margin-top: 9px; padding: 13px; border: 1px solid rgba(233,154,147,.3); border-radius: 12px; background: rgba(130,35,27,.12); }
+.delete-confirmation p { margin: 0 0 12px; color: #efbbb6; font-size: 12px; line-height: 1.45; }
+.delete-confirmation-actions { display: flex; gap: 8px; }
+.delete-confirmation button { flex: 1; min-height: 34px; margin: 0; padding: 0 10px; border: 1px solid rgba(233,154,147,.35); border-radius: 9px; background: transparent; color: #efbbb6; font: inherit; font-size: 12px; cursor: pointer; transition: background 140ms ease, border-color 140ms ease; }
+.delete-confirmation button:first-child { background: rgba(233,154,147,.16); font-weight: 700; }
+.delete-confirmation button:hover:not(:disabled) { border-color: #e99a93; background: rgba(233,154,147,.22); }
+.delete-confirmation button:disabled { opacity: .5; cursor: not-allowed; }
 .golfer-form { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .golfer-form > label { display: block; margin-bottom: 9px; color: var(--muted); font-size: 12px; }
 .golfer-entry { display: flex; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: rgba(0,0,0,.18); }
