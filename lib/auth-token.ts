@@ -1,5 +1,5 @@
 export class AuthenticationError extends Error {
-  constructor(message = "Sign in with Google to continue.") {
+  constructor(message = "Sign in to continue.") {
     super(message);
     this.name = "AuthenticationError";
   }

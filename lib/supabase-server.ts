@@ -290,6 +290,43 @@ export async function ensureGolferRow(user: {
   return golferFromRow(row);
 }
 
+function authEndpoint(path: string): string {
+  if (!isSupabaseConfigured()) throw new SupabaseConfigError();
+  return `${RAW_URL.replace(/\/+$/, "")}/auth/v1/${path}`;
+}
+
+/**
+ * Provisions the Supabase Auth account behind a name-and-PIN login. The account
+ * is confirmed on creation because there is no address to confirm. Reports an
+ * existing name rather than throwing, so the caller can ask for the PIN again
+ * without revealing whether the name or the PIN was wrong.
+ */
+export async function createPinAccountUser(
+  email: string,
+  pin: string,
+  name: string,
+): Promise<"created" | "exists"> {
+  const response = await fetch(authEndpoint("admin/users"), {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      apikey: SECRET_KEY,
+      Authorization: `Bearer ${SECRET_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      password: pin,
+      email_confirm: true,
+      user_metadata: { full_name: name, pin_login: true },
+    }),
+  });
+  if (response.ok) return "created";
+  const detail = await response.text();
+  if (/already been registered|already exists|email_exists/i.test(detail)) return "exists";
+  throw new SupabaseRequestError(response.status, detail || response.statusText);
+}
+
 export async function listGolferRows(): Promise<Golfer[]> {
   const rows = await rest<GolferRow[]>("golfers?select=id,name&order=created_at.asc", { method: "GET" });
   return rows.map(golferFromRow);

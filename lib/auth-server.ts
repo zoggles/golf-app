@@ -25,8 +25,11 @@ export async function requireAuthUser(request: Request): Promise<AuthUser> {
   if (!response.ok) throw new AuthenticationError("Your session expired. Sign in again.");
   const user = (await response.json()) as Partial<AuthUser>;
   if (!user.id || !user.email) throw new AuthenticationError("Your Google account has no verified email.");
+  // "email" is the name-and-PIN path; those accounts are created server side and
+  // never accept a self-supplied address, so the provider is enough to trust it.
   const providers = user.app_metadata?.providers ?? [user.app_metadata?.provider].filter(Boolean);
-  if (!providers.includes("google")) throw new AuthenticationError("Use a Google account to sign in.");
+  const allowed = providers.some((provider) => provider === "google" || provider === "email");
+  if (!allowed) throw new AuthenticationError("Sign in with Google or a name and PIN.");
   return {
     id: user.id,
     email: user.email,

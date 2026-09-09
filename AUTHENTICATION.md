@@ -49,7 +49,25 @@ SUPABASE_SERVICE_ROLE_KEY=<Supabase server secret/service-role key>
 
 `NEXT_PUBLIC_SUPABASE_ANON_KEY` remains supported for an older Supabase key setup. A publishable/anon key is intentionally safe to ship in web and Android clients; a service-role key is not.
 
-## 5. Verification before release
+## 5. Name and PIN sign-in
+
+Anyone without a Google account can sign in with a name and a 6-digit PIN. No
+email address is collected or shown. Each pair is backed by an ordinary Supabase
+Auth password account whose address is derived from the name on the reserved
+`pin.caddystack.invalid` domain, so sessions, refresh, and every API check behave
+exactly as they do for Google.
+
+Names are matched without case or punctuation, so `Nate Zogby` and `nate zogby`
+are the same account. The first person to use a name claims it; after that the
+PIN must match. `POST /api/pin-auth` provisions the account with the secret key
+and is only reached once signing in has already failed, so it never reveals
+whether a name exists.
+
+A 6-digit PIN is the shortest Supabase Auth accepts by default (its minimum
+password length). Brute force is bounded only by Supabase's own auth rate limits,
+which is a deliberate trade for a small private roster.
+
+## 6. Verification before release
 
 1. Sign in on the Vercel site with the mapped Google account and confirm old rounds appear.
 2. Sign out, use a different Google account, and confirm no first account rounds appear.

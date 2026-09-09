@@ -2,6 +2,8 @@
 
 import { Capacitor } from "@capacitor/core";
 import { createClient, type Session, type SupabaseClient } from "@supabase/supabase-js";
+import { apiUrl } from "./api-url";
+import { pinAccountEmail, pinCredentialsSchema } from "./pin-auth";
 
 export interface AuthState {
   session: Session | null | undefined;
@@ -176,6 +178,33 @@ export async function signInWithGoogle(): Promise<void> {
     const { Browser } = await import("@capacitor/browser");
     await Browser.open({ url: data.url });
   }
+}
+
+/**
+ * Signs in with a name and PIN, claiming the name the first time it is used.
+ * Sign-in is tried before provisioning so an existing name with the wrong PIN
+ * fails as a mismatch rather than quietly creating a second account.
+ */
+export async function signInWithPin(name: string, pin: string): Promise<void> {
+  const parsed = pinCredentialsSchema.safeParse({ name, pin });
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Check your name and PIN.");
+  const credentials = parsed.data;
+  const email = pinAccountEmail(credentials.name);
+  const auth = supabase().auth;
+
+  const existing = await auth.signInWithPassword({ email, password: credentials.pin });
+  if (!existing.error) return;
+
+  const response = await fetch(apiUrl("/api/pin-auth"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(credentials),
+  });
+  const result = (await response.json()) as { created?: boolean; error?: string };
+  if (!response.ok) throw new Error(result.error || "Could not sign in with that name and PIN.");
+
+  const claimed = await auth.signInWithPassword({ email, password: credentials.pin });
+  if (claimed.error) throw claimed.error;
 }
 
 export async function signOut(): Promise<void> {

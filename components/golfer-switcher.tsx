@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, CaretDown, Check, GoogleLogo, NotePencil, SignOut, User } from "@phosphor-icons/react";
+import { ArrowLeft, CaretDown, Check, GoogleLogo, Key, NotePencil, SignOut, User } from "@phosphor-icons/react";
 import { useAuth } from "@/hooks/use-auth";
 import { useGolferRoster } from "@/hooks/use-golfer-roster";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { clearGolferSession, refreshRoster, renameSelectedGolfer, selectGolfer } from "@/lib/golfer-session";
-import { signInWithGoogle, signOut } from "@/lib/auth-client";
+import { signInWithGoogle, signInWithPin, signOut } from "@/lib/auth-client";
+import { PIN_LENGTH } from "@/lib/pin-auth";
 import { deleteCurrentAccount } from "@/lib/account-client";
 import type { Golfer } from "@/lib/golfers";
 
@@ -20,6 +21,8 @@ export function AccountGate() {
   const { golfers, error: rosterError } = useGolferRoster();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pinName, setPinName] = useState("");
+  const [pin, setPin] = useState("");
 
   useEffect(() => {
     if (session) void refreshRoster();
@@ -42,6 +45,19 @@ export function AccountGate() {
     }
   }
 
+  async function loginWithPin(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setActionError(null);
+    try {
+      await signInWithPin(pinName, pin);
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "That name and PIN did not match.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const error = actionError ?? authError ?? rosterError;
   return (
     <div className="page-shell">
@@ -60,6 +76,38 @@ export function AccountGate() {
             <button className="primary-button google-sign-in" type="button" onClick={() => void login()} disabled={busy}>
               <GoogleLogo size={20} weight="bold" /> {busy ? "Opening Google…" : "Continue with Google"}
             </button>
+            <p className="pin-divider"><span>or</span></p>
+            <form className="pin-form" onSubmit={(event) => void loginWithPin(event)}>
+              <label className="pin-field">
+                <span>Name</span>
+                <input
+                  value={pinName}
+                  onChange={(event) => setPinName(event.target.value)}
+                  placeholder="Your name"
+                  maxLength={60}
+                  autoComplete="username"
+                />
+              </label>
+              <label className="pin-field">
+                <span>{PIN_LENGTH}-digit PIN</span>
+                <input
+                  value={pin}
+                  onChange={(event) => setPin(event.target.value.replace(/[^0-9]/g, "").slice(0, PIN_LENGTH))}
+                  placeholder={"0".repeat(PIN_LENGTH)}
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="current-password"
+                />
+              </label>
+              <button
+                className="secondary-button pin-submit"
+                type="submit"
+                disabled={busy || pinName.trim().length === 0 || pin.length !== PIN_LENGTH}
+              >
+                <Key size={18} weight="bold" /> Continue
+              </button>
+              <p className="pin-hint">No Google account needed. The first time a name is used it becomes yours.</p>
+            </form>
           </>
         )}
         {error ? <p className="voice-error">{error}</p> : null}
