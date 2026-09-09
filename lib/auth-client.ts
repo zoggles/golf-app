@@ -76,10 +76,26 @@ function start() {
   started = true;
   try {
     const auth = supabase().auth;
-    void restoreSession().catch((cause) => {
+    void restoreSession().catch(async (cause) => {
+      // A PKCE code is single-use, so a redundant exchange rejects even when the
+      // first one already stored a valid session. Trust stored state over the error.
+      const { data } = await auth.getSession();
+      if (data.session) {
+        publish({ session: data.session, error: null });
+        return;
+      }
       publish({ session: null, error: cause instanceof Error ? cause.message : "Google sign-in failed." });
     });
-    auth.onAuthStateChange((_event, session) => publish({ session, error: null }));
+    auth.onAuthStateChange((event, session) => {
+      // A redundant PKCE exchange rejects and emits a null session even though an
+      // earlier exchange already stored a valid one. Only an explicit sign-out
+      // clears the store; any other null is reconciled against stored state.
+      if (session || event === "SIGNED_OUT") {
+        publish({ session, error: null });
+        return;
+      }
+      void auth.getSession().then(({ data }) => publish({ session: data.session, error: null }));
+    });
 
     if (Capacitor.isNativePlatform()) {
       void import("@capacitor/app").then(({ App }) =>

@@ -29,9 +29,9 @@ Complete the OAuth consent/branding setup, then copy the Google client ID and cl
 
 In Supabase Dashboard → Authentication → URL Configuration:
 
-- Site URL: `https://golf-app-mu-nine.vercel.app`
+- Site URL: `https://caddy-stack.vercel.app`
 - Redirect URLs:
-  - `https://golf-app-mu-nine.vercel.app/play`
+  - `https://caddy-stack.vercel.app/play`
   - `http://localhost:3000/play`
   - `com.zogby.caddystack://auth/callback`
 
@@ -55,6 +55,6 @@ SUPABASE_SERVICE_ROLE_KEY=<Supabase server secret/service-role key>
 2. Sign out, use a different Google account, and confirm no first account rounds appear.
 3. Record a test round on web and confirm it appears after signing into Android.
 4. Delete the test account from the account menu and confirm its golfer and games are gone.
-5. Use `https://golf-app-mu-nine.vercel.app/delete-account` for Google Play's external account-deletion URL.
+5. Use `https://caddy-stack.vercel.app/delete-account` for Google Play's external account-deletion URL.
 
 Google Play also requires accurate Data safety answers and a privacy policy. Authentication collects the Google account ID, email address, and display name; the app stores the golfer's course and round data.
