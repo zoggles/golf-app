@@ -123,7 +123,29 @@ export function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * supabase-js keeps a code verifier per PKCE flow and never removes the entries
+ * for flows the user abandoned. A later callback can then be exchanged against a
+ * stale verifier, which fails with 401 and never recovers on its own. This app
+ * only ever has one sign-in in flight, so drop the leftovers before starting.
+ */
+function clearPendingPkceFlows(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const ref = new URL(SUPABASE_URL).hostname.split(".")[0];
+    const prefix = `sb-${ref}-auth-token`;
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith(prefix) && key.includes("code-verifier")) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // A browser that refuses storage cannot hold stale flows either.
+  }
+}
+
 export async function signInWithGoogle(): Promise<void> {
+  clearPendingPkceFlows();
   const native = Capacitor.isNativePlatform();
   const redirectTo = native ? NATIVE_AUTH_CALLBACK : `${window.location.origin}/play`;
   const { data, error } = await supabase().auth.signInWithOAuth({
