@@ -4,7 +4,7 @@ import { GENESEE_VALLEY_SOUTH } from "./courses";
 /**
  * Exercises the persistence layer against a fake browser and a fake API, with
  * the network dropping mid-round the way it does on a real course, and with two
- * golfers sharing the device.
+ * account-scoped local mirrors.
  */
 
 interface GameRecord extends Record<string, unknown> {
@@ -68,8 +68,9 @@ function installFakeBrowser(): FakeApi {
     if (!online) throw new Error("offline");
     const [path, query] = String(url).split("?");
     const body = init.body ? (JSON.parse(init.body) as Record<string, unknown>) : null;
-    // Mirrors the server: the caller's golfer comes from the header, never the body.
-    const golferId = init.headers?.["x-golfer-id"] ?? "";
+    // Mirrors the server: identity is derived from the authenticated session,
+    // never from an owner id in the request body.
+    const golferId = session?.readSelectedGolfer()?.id ?? "";
 
     if (path === "/api/golf-data") {
       if (!golferId) return respond({ error: "no golfer" }, 400);
@@ -193,7 +194,7 @@ describe("golf persistence", () => {
     expect(api.games.size).toBe(0);
   });
 
-  it("drains a round logged offline even after switching golfers", async () => {
+  it("does not drain one account's offline write under another account", async () => {
     session.selectGolfer(RAY);
     await settle();
 
@@ -209,9 +210,13 @@ describe("golf persistence", () => {
     await settle();
     await settle();
 
+    expect(api.games.has(rayRound.id)).toBe(false);
+    expect(storage.readGolfData().rounds).toHaveLength(0);
+
+    session.selectGolfer(RAY);
+    await settle();
+    await settle();
     expect(api.games.get(rayRound.id)?.golferId).toBe(RAY.id);
     expect(Object.keys(api.games.get(rayRound.id)?.scores as object)).toHaveLength(1);
-    // The write landed on Ray's history without appearing in Nell's.
-    expect(storage.readGolfData().rounds).toHaveLength(0);
   });
 });

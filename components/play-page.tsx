@@ -18,6 +18,7 @@ import {
 } from "@phosphor-icons/react";
 import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/courses";
 import { apiUrl } from "@/lib/api-url";
+import { authHeaders } from "@/lib/auth-client";
 import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundHoleMetrics, updateRoundScore } from "@/lib/storage";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, summarizeRound } from "@/lib/metrics";
 import { nextHoleAfterVoiceUpdates, parseHoleMetricCommands, parseScoreCommands, parseStartCommand, type HoleMetricCommand, type ScoreCommand } from "@/lib/voice-parser";
@@ -120,7 +121,7 @@ function RoundStarter() {
     try {
       const response = await fetch(apiUrl("/api/courses/lookup"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ query }),
         signal: controller.signal,
       });
@@ -384,7 +385,7 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
     try {
       const response = await fetch(apiUrl("/api/round-command"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({
           text,
           currentHole: selectedHole,

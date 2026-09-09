@@ -317,6 +317,11 @@ a { color: inherit; text-decoration: none; }
 .golfer-initials { width: 30px; height: 30px; flex-shrink: 0; border-radius: 50%; background: rgba(173,240,95,.14); color: var(--green); display: grid; place-items: center; font-size: 12px; font-weight: 750; letter-spacing: .02em; }
 .golfer-panel { position: absolute; top: calc(100% + 9px); right: 0; z-index: 40; width: min(300px, calc(100vw - 34px)); padding: 18px; border-radius: 18px; background: linear-gradient(145deg, #16271c, #0d1912); box-shadow: 0 22px 60px rgba(0,0,0,.55); }
 .golfer-panel .eyebrow { margin-bottom: 12px; }
+.account-summary { display: flex; align-items: center; gap: 11px; padding: 10px; border-radius: 13px; background: rgba(0,0,0,.18); }
+.account-summary > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.account-summary strong, .account-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-summary strong { font-size: 14px; }
+.account-summary small { color: var(--faint); font-size: 11px; }
 .golfer-list { display: flex; flex-direction: column; gap: 6px; }
 .golfer-option { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 50px; padding: 0 12px; border: 1px solid transparent; border-radius: 13px; background: rgba(0,0,0,.18); cursor: pointer; text-align: left; }
 .golfer-option:hover { border-color: var(--line); }
@@ -325,6 +330,10 @@ a { color: inherit; text-decoration: none; }
 .golfer-option > svg { color: var(--green); }
 .golfer-secondary-action { display: inline-flex; align-items: center; gap: 7px; margin-top: 14px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
 .golfer-secondary-action:hover { color: var(--ink); }
+.danger-action { color: #e99a93; }
+.delete-confirmation { margin-top: 14px; padding: 12px; border: 1px solid rgba(233,154,147,.3); border-radius: 11px; background: rgba(130,35,27,.12); }
+.delete-confirmation p { margin: 0 0 10px; color: #efbbb6; font-size: 12px; line-height: 1.45; }
+.delete-confirmation button { margin-right: 10px; border: 0; background: transparent; color: #efbbb6; font-size: 12px; cursor: pointer; }
 .golfer-form { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .golfer-form > label { display: block; margin-bottom: 9px; color: var(--muted); font-size: 12px; }
 .golfer-entry { display: flex; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: rgba(0,0,0,.18); }
@@ -339,6 +348,7 @@ a { color: inherit; text-decoration: none; }
 .golfer-gate > p { margin: 0 0 26px; color: var(--muted); line-height: 1.55; }
 .golfer-gate .golfer-form { text-align: left; }
 .golfer-gate .golfer-option { text-align: left; }
+.google-sign-in { margin: 4px auto 0; }
 
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(173,240,95,.32); } 50% { box-shadow: 0 0 0 12px rgba(173,240,95,0); } }
 @keyframes spin { to { transform: rotate(360deg); } }

@@ -4,7 +4,7 @@ A mobile-first, voice-friendly golf round tracker. Golfers, rounds, and course s
 
 ## Included
 
-- Pick which golfer is playing; every round is recorded against them
+- Sign in with Google; every round is private to that verified account
 - Start a front nine, back nine, or full round by voice or text
 - Research an unknown course on demand and turn its published scorecard into app data
 - Preloaded official white-tee scorecard for Genesee Valley Golf Course — South
@@ -42,34 +42,22 @@ See [ANDROID.md](./ANDROID.md) for Android Studio setup, device testing, archite
 
 Course research, AI command interpretation, and cloud transcription use Vercel AI Gateway through the linked project's OIDC token. The Vercel team must have AI Gateway billing enabled. Browser speech recognition and the local command parser provide a fallback for scoring when available.
 
-## Golfers, and where authentication will go
+## Accounts and data ownership
 
-There is no sign-in yet. The app asks who is playing, remembers that choice in
-the browser, and records every round against them. Switching golfers swaps the
-whole view, and each golfer's rounds are invisible to the others.
+Caddy Stack requires Google sign-in through Supabase Auth. Every protected API
+request carries a short-lived access token. The server validates it with
+Supabase and derives the golfer profile from the verified Auth user; it never
+trusts a golfer ID supplied by the browser. AI endpoints are protected too, so
+anonymous callers cannot spend the project's transcription or model budget.
 
-The point of interest is `lib/golfers.ts`. Every request that reads or writes
-rounds names its golfer in an `x-golfer-id` header, and `resolveGolferId` is the
-only thing that reads it:
+The local mirror remains keyed by golfer for offline scoring. A queued write
+only drains while its owning golfer is signed in, preventing data recorded for
+one account from being replayed under another account's token. Account deletion
+is available in the profile menu and at `/delete-account`; it removes the Auth
+user, golfer profile, rounds, and matching local data.
 
-- Routes never take an owner from a request body. `saveGameRow` stamps
-  `golfer_id` from the resolved golfer, so a crafted payload cannot write into
-  someone else's history, and a database trigger refuses to move an existing
-  game to a different golfer.
-- Reads are filtered the same way, so a query cannot widen past its caller.
-- A missing or malformed golfer is refused rather than silently scoped to
-  nothing.
-
-Adding accounts therefore means verifying a session inside `resolveGolferId` and
-ignoring the header. No route, query, or table below it changes, and
-`golfers.auth_user_id` is where a row would link to an authenticated account.
-
-On the browser side, `lib/golfer-session.ts` is the matching seam: it owns the
-selection and the headers to send, and is what a real session client replaces.
-The local mirror is keyed per golfer so a switch is instant and works offline,
-while the write queue is shared and stamps each pending write with the golfer it
-belongs to — a round logged in a dead zone still drains to the right history
-even if someone else picks up the phone first.
+See [AUTHENTICATION.md](./AUTHENTICATION.md) for the Supabase migration, Google
+OAuth callback, Vercel variables, Android deep link, and release checks.
 
 ## Logging a paper scorecard
 
@@ -127,7 +115,7 @@ Supabase is the source of truth. Two tables hold everything:
 
 | Table | Holds |
 | --- | --- |
-| `golfers` | One row per person using the app: `id` and `name`. |
+| `golfers` | One row per verified account: `id`, display `name`, Auth owner, and optional legacy-claim email. |
 | `courses` | One row per course and tee: rating, slope, par, total yardage, source URL, and the full per-hole scorecard (`holes` jsonb — par, yardage, handicap, club, strategy). |
 | `games` | One row per game played: the `golfer_id` that owns it, course reference, segment, start and completion times, status, hole-by-hole `scores`, the voice/manual `events` log, and a `course_snapshot` of the scorecard as it was that day. |
 

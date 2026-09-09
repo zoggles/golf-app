@@ -1,28 +1,15 @@
 import { persistenceErrorResponse } from "@/lib/api-errors";
-import { golferPayloadSchema, resolveGolferId } from "@/lib/golfers";
-import { createGolferRow, listGolferRows, renameGolferRow } from "@/lib/supabase-server";
+import { resolveAuthenticatedGolfer } from "@/lib/auth-server";
+import { golferPayloadSchema } from "@/lib/golfers";
+import { renameGolferRow } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
-/**
- * The roster of golfers using this app.
- *
- * Listing everyone is deliberate while there is no sign-in: picking a golfer is
- * how the app knows whose round it is recording. Once accounts exist, this is
- * where the list narrows to the people the caller is allowed to see.
- */
-export async function GET() {
+/** Returns only the profile owned by the verified Google account. */
+export async function GET(request: Request) {
   try {
-    return Response.json({ golfers: await listGolferRows() });
-  } catch (cause) {
-    return persistenceErrorResponse(cause);
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const { name } = golferPayloadSchema.parse(await request.json());
-    return Response.json({ golfer: await createGolferRow(name) });
+    const { user, golfer } = await resolveAuthenticatedGolfer(request);
+    return Response.json({ golfers: [{ ...golfer, accountId: user.id }] });
   } catch (cause) {
     return persistenceErrorResponse(cause);
   }
@@ -31,9 +18,9 @@ export async function POST(request: Request) {
 /** Renames the golfer the request is acting as, and only that one. */
 export async function PATCH(request: Request) {
   try {
-    const golferId = resolveGolferId(request);
+    const { user, golfer } = await resolveAuthenticatedGolfer(request);
     const { name } = golferPayloadSchema.parse(await request.json());
-    return Response.json({ golfer: await renameGolferRow(golferId, name) });
+    return Response.json({ golfer: { ...(await renameGolferRow(golfer.id, name)), accountId: user.id } });
   } catch (cause) {
     return persistenceErrorResponse(cause);
   }

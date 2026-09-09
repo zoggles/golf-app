@@ -79,6 +79,8 @@ interface CourseRow {
 interface GolferRow {
   id: string;
   name: string;
+  auth_user_id?: string | null;
+  login_email?: string | null;
 }
 
 interface GameRow {
@@ -232,6 +234,60 @@ export async function readGolfDataFromDb(golferId: string): Promise<GolfData> {
 
 function golferFromRow(row: GolferRow): Golfer {
   return { id: row.id, name: row.name };
+}
+
+function accountName(email: string, metadata?: Record<string, unknown>): string {
+  const supplied = [metadata?.full_name, metadata?.name].find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  return (supplied?.trim() || email.split("@")[0] || "Golfer").slice(0, 60);
+}
+
+/**
+ * One verified Supabase user owns one golfer row. An administrator can attach
+ * an existing history by putting that user's lowercase Gmail address in
+ * login_email before their first sign-in; otherwise a fresh profile is made.
+ */
+export async function ensureGolferRow(user: {
+  id: string;
+  email: string;
+  user_metadata?: Record<string, unknown>;
+}): Promise<Golfer> {
+  const owned = await rest<GolferRow[]>(
+    `golfers?auth_user_id=eq.${encodeURIComponent(user.id)}&select=id,name&limit=1`,
+    { method: "GET" },
+  );
+  if (owned[0]) return golferFromRow(owned[0]);
+
+  const email = user.email.trim().toLowerCase();
+  const legacy = await rest<GolferRow[]>(
+    `golfers?login_email=eq.${encodeURIComponent(email)}&auth_user_id=is.null&select=id,name&limit=1`,
+    { method: "GET" },
+  );
+  if (legacy[0]) {
+    const claimed = await rest<GolferRow[]>(
+      `golfers?id=eq.${encodeURIComponent(legacy[0].id)}&auth_user_id=is.null&select=id,name`,
+      {
+        method: "PATCH",
+        prefer: "return=representation",
+        body: JSON.stringify({ auth_user_id: user.id }),
+      },
+    );
+    if (claimed[0]) return golferFromRow(claimed[0]);
+  }
+
+  const created = await rest<GolferRow[]>("golfers?on_conflict=auth_user_id&select=id,name", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=representation",
+    body: JSON.stringify({
+      name: accountName(email, user.user_metadata),
+      auth_user_id: user.id,
+      login_email: email,
+    }),
+  });
+  const row = created[0];
+  if (!row) throw new SupabaseRequestError(500, "Account provisioning returned no golfer.");
+  return golferFromRow(row);
 }
 
 export async function listGolferRows(): Promise<Golfer[]> {

@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChartLineUp, FlagPennant } from "@phosphor-icons/react";
+import { useAuth } from "@/hooks/use-auth";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
-import { GolferGate, GolferSwitcher } from "./golfer-switcher";
+import { AccountGate, GolferSwitcher } from "./golfer-switcher";
 
 const navItems = [
   { href: "/play", label: "Play", icon: FlagPennant },
@@ -13,10 +14,10 @@ const navItems = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  // The selection lives in the browser, so the server render cannot know it and
-  // reads `undefined`. Holding that frame avoids flashing "Who is playing?" at
-  // someone who has already chosen.
+  const { session } = useAuth();
   const golfer = useSelectedGolfer();
+  const ready = Boolean(session && golfer && golfer.accountId === session.user.id);
+  const deletionPage = pathname === "/delete-account";
 
   return (
     <div className="app-frame">
@@ -27,8 +28,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
         <GolferSwitcher />
       </header>
-      <main>{golfer === undefined ? null : golfer ? children : <GolferGate />}</main>
-      {golfer ? (
+      <main>{deletionPage ? children : session === undefined || golfer === undefined ? null : ready ? children : <AccountGate />}</main>
+      {ready && !deletionPage ? (
         <nav className="bottom-nav" aria-label="Primary navigation">
           {navItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href;

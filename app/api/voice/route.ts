@@ -1,10 +1,14 @@
 import { gateway } from "@ai-sdk/gateway";
 import { transcribe } from "ai";
+import { requireAuthUser } from "@/lib/auth-server";
+import { AuthenticationError } from "@/lib/auth-token";
+import { persistenceErrorResponse } from "@/lib/api-errors";
 
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
+    await requireAuthUser(request);
     const form = await request.formData();
     const audio = form.get("audio");
     if (!(audio instanceof File)) return Response.json({ error: "No recording received." }, { status: 400 });
@@ -28,6 +32,7 @@ export async function POST(request: Request) {
     return Response.json({ transcript: result.text.trim() });
   } catch (error) {
     console.error("Voice transcription failed", error);
+    if (error instanceof AuthenticationError) return persistenceErrorResponse(error);
     const nestedCodes = error && typeof error === "object" && "errors" in error && Array.isArray(error.errors)
       ? error.errors.map((item) => item instanceof Error ? item.name : "UnknownNestedError")
       : [];
