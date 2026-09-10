@@ -199,6 +199,8 @@ export function GolferSwitcher() {
               <div className="golfer-actions">
                 <button type="button" className="golfer-secondary-action" onClick={() => setRenaming(true)}><NotePencil size={16} /> Rename profile</button>
                 <button type="button" className="golfer-secondary-action" onClick={() => void logout()} disabled={busy}><SignOut size={16} /> {busy ? "Signing out…" : "Sign out"}</button>
+              </div>
+              <div className="golfer-actions golfer-actions-danger">
                 {confirmingDelete ? (
                   <div className="delete-confirmation">
                     <p>This permanently deletes your account and every saved round.</p>
