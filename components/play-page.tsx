@@ -10,6 +10,7 @@ import {
   Check,
   CheckCircle,
   FlagPennant,
+  GpsFix,
   MapPin,
   Minus,
   Plus,
@@ -25,6 +26,11 @@ import { nextHoleAfterVoiceUpdates, parseHoleMetricCommands, parseScoreCommands,
 import { COMMON_TEES, courseListOptions, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeOptionLabel } from "@/lib/tee-selection";
 import type { Course, HoleMetrics, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
+import { useCaddyViewPrefs } from "@/hooks/use-caddy-view-prefs";
+import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
+import { setCaddyViewEnabled } from "@/lib/caddy-view-prefs";
+import { CaddyView } from "./caddy-view";
+import { ClubCallout } from "./club-callout";
 import { ScorecardPhotoImport } from "./scorecard-photo-import";
 import { VoiceControl } from "./voice-control";
 
@@ -303,6 +309,8 @@ function RoundStarter() {
 
 function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void }) {
   const data = useGolfData();
+  const caddyView = useCaddyViewPrefs();
+  const golfer = useSelectedGolfer();
   const round = data.rounds.find((item) => item.id === roundId);
   const course = round?.course ?? GENESEE_VALLEY_SOUTH;
   const holes = useMemo(() => (round ? getSegmentHoles(course, round.segment) : []), [course, round]);
@@ -441,7 +449,18 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
           <h1>{course.shortName}</h1>
           <p><MapPin size={14} /> {course.location} · {segmentLabel(round.segment)} · {round.tee} tees · Round HCP {roundHandicap ?? "—"}</p>
         </div>
-        <div className="round-total"><small>THRU</small><strong>{completedHoles}</strong><span>{formatToPar(summary.toPar)}</span></div>
+        <div className="round-header-actions">
+          <button
+            type="button"
+            className={caddyView.enabled ? "caddy-toggle active" : "caddy-toggle"}
+            aria-pressed={caddyView.enabled}
+            onClick={() => setCaddyViewEnabled(!caddyView.enabled)}
+          >
+            <GpsFix size={15} weight={caddyView.enabled ? "fill" : "regular"} />
+            <span>Caddy View</span>
+          </button>
+          <div className="round-total"><small>THRU</small><strong>{completedHoles}</strong><span>{formatToPar(summary.toPar)}</span></div>
+        </div>
       </section>
 
       <section className="hole-focus surface-card">
@@ -456,10 +475,17 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
           <div><small>HOLE HCP</small><strong>{currentHole.handicap}</strong><span>{currentHoleStrokes ? `YOU GET +${currentHoleStrokes}` : "NO STROKE"}</span></div>
         </div>
         <p className="handicap-help">Hole HCP ranks difficulty: 1 is hardest, 18 is easiest. “You get +1” marks a handicap stroke for this round.</p>
-        <div className="club-callout">
-          <div><small>SUGGESTED OFF THE TEE</small><strong>{currentHole.suggestedClub}</strong></div>
-          <p>{currentHole.strategy}</p>
-        </div>
+        {caddyView.enabled ? (
+          <CaddyView
+            hole={currentHole}
+            course={course}
+            golferId={golfer?.id ?? null}
+            onDisable={() => setCaddyViewEnabled(false)}
+            onSelectHole={selectHole}
+          />
+        ) : (
+          <ClubCallout hole={currentHole} />
+        )}
         <div className="score-stepper">
           <button type="button" onClick={() => setManualScore((score) => Math.max(1, score - 1))} aria-label="Decrease score"><Minus size={23} weight="bold" /></button>
           <div><span>SCORE</span><strong>{manualScore}</strong><small>{formatScoreName(manualScore - currentHole.par)}</small></div>

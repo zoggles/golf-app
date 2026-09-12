@@ -375,10 +375,80 @@ a { color: inherit; text-decoration: none; }
 .pin-submit:disabled { opacity: .38; cursor: not-allowed; }
 .pin-hint { margin: 0; color: var(--faint); font-size: 12px; line-height: 1.5; }
 
+
+/* Caddy View: the live GPS hole map that stands in for .club-callout. */
+.caddy-view { margin-bottom: 22px; border: 1px solid var(--line); border-radius: 14px; background: rgba(0,0,0,.19); overflow: hidden; }
+.caddy-view .club-callout { margin: 0; border-radius: 0; background: transparent; border-top: 1px solid var(--line); }
+.caddy-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.caddy-head-label, .caddy-signal { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; letter-spacing: .13em; color: var(--faint); }
+.caddy-signal { color: var(--green); }
+.caddy-signal.weak { color: var(--sand); }
+.caddy-map-button { position: relative; display: block; width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+/* The CSS box matches the viewBox aspect exactly. Any mismatch letterboxes the drawing
+   and wastes the width, which is the one thing a phone has least of. */
+.caddy-view-map { display: block; width: 100%; aspect-ratio: 320 / 400; max-height: 68vh; background: radial-gradient(circle at 50% 84%, rgba(21,40,27,.92), rgba(6,14,9,.96)); }
+.caddy-view-expanded .caddy-view-map { max-height: 88vh; }
+.caddy-expand-hint { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: rgba(8,17,12,.72); color: var(--muted); font-size: 10px; }
+
+.caddy-fairway { fill: none; stroke: rgba(122,176,96,.17); stroke-linecap: round; stroke-linejoin: round; }
+.caddy-hazard { stroke-width: .6; }
+.caddy-hazard.water { fill: rgba(96,150,214,.34); stroke: rgba(126,178,235,.5); }
+.caddy-hazard.bunker { fill: rgba(219,209,184,.28); stroke: rgba(219,209,184,.42); }
+.caddy-hazard.ob { fill: rgba(242,156,135,.13); stroke: rgba(242,156,135,.36); }
+.caddy-green-shape { fill: rgba(173,240,95,.3); stroke: rgba(198,247,140,.85); stroke-width: 1.1; }
+.caddy-centreline { fill: none; stroke: var(--faint); stroke-width: .8; stroke-dasharray: 3 5; opacity: .5; }
+.caddy-shot-arc { fill: none; stroke: var(--green); stroke-width: 2.6; stroke-linecap: round; }
+.caddy-shot-arc.layup { stroke: var(--sand); }
+.caddy-shot-roll { fill: none; stroke: var(--green); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 2 4; opacity: .6; }
+.caddy-dispersion { fill: rgba(173,240,95,.09); stroke: rgba(173,240,95,.3); stroke-width: .7; }
+.caddy-ball { fill: var(--ink); stroke: rgba(8,17,12,.75); stroke-width: .7; }
+.caddy-accuracy { fill: rgba(173,240,95,.07); stroke: rgba(173,240,95,.2); stroke-width: .5; }
+.caddy-player-core { fill: var(--green); }
+.caddy-flag-pole { stroke: var(--sand); stroke-width: .9; }
+.caddy-flag-cloth { fill: var(--sand); }
+
+.caddy-readout { display: grid; grid-template-columns: minmax(140px, .75fr) 1fr; gap: 18px; padding: 16px 18px; border-top: 1px solid var(--line); }
+.caddy-readout > div { display: flex; flex-direction: column; gap: 5px; }
+.caddy-readout small { color: var(--faint); font-size: 9px; letter-spacing: .14em; }
+.caddy-readout strong { color: var(--green); font-size: 19px; }
+.caddy-readout p { margin: 0; color: var(--muted); line-height: 1.45; font-size: 13px; }
+
+.caddy-distance-row { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); }
+.caddy-distance-row > div { display: flex; flex-direction: column; text-align: center; padding: 12px 4px; border-right: 1px solid var(--line); }
+.caddy-distance-row > div:last-child { border-right: 0; }
+.caddy-distance-row small { color: var(--faint); font-size: 9px; letter-spacing: .15em; }
+.caddy-distance-row strong { font-size: 26px; letter-spacing: -.04em; margin-top: 3px; }
+.caddy-distance-row .caddy-primary-number { color: var(--green); }
+
+.caddy-status { display: flex; align-items: center; gap: 9px; padding: 11px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.4; }
+.caddy-status.warn { color: var(--sand); }
+.caddy-status.error { color: var(--danger); }
+.caddy-status > svg { flex-shrink: 0; }
+.caddy-status button { margin-left: auto; flex-shrink: 0; min-height: 32px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+
+.caddy-hole-hint { display: flex; align-items: center; gap: 9px; padding: 10px 14px; border-top: 1px solid var(--line); background: rgba(173,240,95,.06); color: var(--green); font-size: 12px; }
+.caddy-hole-hint > span { margin-right: auto; }
+.caddy-hole-hint button { min-height: 30px; padding: 0 10px; border: 1px solid rgba(173,240,95,.35); border-radius: 8px; background: transparent; color: var(--green); font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; }
+
+.caddy-pin-capture { padding: 24px 18px 0; text-align: center; color: var(--green); }
+.caddy-pin-capture p { margin: 12px 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.caddy-pin-capture .club-callout { margin-top: 18px; text-align: left; }
+.caddy-attribution { margin: 0; padding: 12px 18px 0; color: var(--faint); font-size: 9px; line-height: 1.5; }
+.caddy-inline-off { display: block; width: 100%; padding: 12px; margin-top: 10px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--faint); font-size: 11px; cursor: pointer; }
+.caddy-bag { margin-bottom: 22px; }
+.caddy-bag-note { margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); color: var(--faint); font-size: 11px; line-height: 1.5; }
+
+.caddy-toggle { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 13px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 650; cursor: pointer; transition: border-color 160ms ease, color 160ms ease, background 160ms ease; }
+.caddy-toggle.active { border-color: rgba(173,240,95,.4); background: rgba(173,240,95,.1); color: var(--green); }
+.round-header-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(173,240,95,.32); } 50% { box-shadow: 0 0 0 12px rgba(173,240,95,0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 680px) {
+  .caddy-readout { grid-template-columns: 1fr; gap: 8px; }
+  .caddy-view-map { max-height: 58vh; }
+  .round-header-actions { gap: 9px; }
   .topbar { height: 62px; padding: 0 17px; }
   .page-shell { padding: 34px 16px 32px; }
   .page-title { margin-bottom: 22px; }
@@ -407,6 +477,8 @@ a { color: inherit; text-decoration: none; }
 }
 
 @media (max-width: 420px) {
+  .caddy-toggle span { display: none; }
+  .caddy-toggle { padding: 0 11px; }
   .local-pill span { display: none; }
   .golfer-name { max-width: 74px; }
   .segment-control button { font-size: 12px; }

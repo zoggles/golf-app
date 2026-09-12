@@ -1,5 +1,6 @@
 import type { Golfer } from "./golfers";
 import type { Course, GolfData, GolfRound, Hole, RoundEvent, RoundSegment, RoundStatus } from "./types";
+import type { CourseGeometry, CourseGeometryBundle, CourseHazard, HoleMap, OsmHoleGeometry } from "./hole-geometry";
 
 /**
  * Server-only Supabase access.
@@ -352,4 +353,144 @@ export async function renameGolferRow(golferId: string, name: string): Promise<G
   const row = rows[0];
   if (!row) throw new SupabaseRequestError(404, "That golfer no longer exists.");
   return golferFromRow(row);
+}
+
+interface CourseGeometryRow {
+  id: string;
+  name: string;
+  centre_lat: number;
+  centre_lng: number;
+  holes: OsmHoleGeometry[];
+  hazards: CourseHazard[];
+  source: "osm" | "manual";
+  attribution: string;
+  fetched_at: string;
+}
+
+interface CourseGeometryLinkRow {
+  course_key: string;
+  geometry_id: string;
+  hole_map: Record<string, string>;
+  matched_by: "gps" | "manual";
+  course_geometry?: CourseGeometryRow | null;
+}
+
+function geometryFromRow(row: CourseGeometryRow): CourseGeometry {
+  return {
+    id: row.id,
+    name: row.name,
+    centre: { lat: row.centre_lat, lng: row.centre_lng },
+    holes: row.holes ?? [],
+    hazards: row.hazards ?? [],
+    source: row.source,
+    attribution: row.attribution,
+    fetchedAt: row.fetched_at,
+  };
+}
+
+function geometryToRow(geometry: CourseGeometry): CourseGeometryRow & { updated_at: string } {
+  return {
+    id: geometry.id,
+    name: geometry.name,
+    centre_lat: geometry.centre.lat,
+    centre_lng: geometry.centre.lng,
+    holes: geometry.holes,
+    hazards: geometry.hazards,
+    source: geometry.source,
+    attribution: geometry.attribution,
+    fetched_at: geometry.fetchedAt,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function holeMapFromRow(raw: Record<string, string>): HoleMap {
+  const map: HoleMap = {};
+  for (const [key, value] of Object.entries(raw ?? {})) {
+    const holeNumber = Number(key);
+    if (Number.isInteger(holeNumber)) map[holeNumber] = value;
+  }
+  return map;
+}
+
+/** One round trip: the link row and its geometry, embedded over the foreign key. */
+export async function readCourseGeometryBundle(courseKey: string): Promise<CourseGeometryBundle | null> {
+  const rows = await rest<CourseGeometryLinkRow[]>(
+    `course_geometry_links?course_key=eq.${encodeURIComponent(courseKey)}&select=*,course_geometry(*)`,
+    { method: "GET" },
+  );
+  const row = rows[0];
+  if (!row?.course_geometry) return null;
+  return {
+    courseKey: row.course_key,
+    geometry: geometryFromRow(row.course_geometry),
+    holeMap: holeMapFromRow(row.hole_map),
+    matchedBy: row.matched_by,
+  };
+}
+
+export async function readCourseGeometryRow(id: string): Promise<CourseGeometry | null> {
+  const rows = await rest<CourseGeometryRow[]>(
+    `course_geometry?id=eq.${encodeURIComponent(id)}&select=*`,
+    { method: "GET" },
+  );
+  return rows[0] ? geometryFromRow(rows[0]) : null;
+}
+
+/**
+ * Candidate geometry rows near a fix, cheapest columns only.
+ *
+ * Selecting everything here would pull each candidate's full hole and hazard jsonb just to
+ * throw most of it away. The caller narrows by distance and then fetches the winner.
+ */
+export async function findNearbyCourseGeometry(
+  lat: number,
+  lng: number,
+  radiusM: number,
+): Promise<Array<{ id: string; name: string; centre: { lat: number; lng: number } }>> {
+  const latSpan = radiusM / 111_320;
+  const lngSpan = radiusM / Math.max(1, 111_320 * Math.cos((lat * Math.PI) / 180));
+  const rows = await rest<Array<Pick<CourseGeometryRow, "id" | "name" | "centre_lat" | "centre_lng">>>(
+    `course_geometry?select=id,name,centre_lat,centre_lng` +
+      `&centre_lat=gte.${lat - latSpan}&centre_lat=lte.${lat + latSpan}` +
+      `&centre_lng=gte.${lng - lngSpan}&centre_lng=lte.${lng + lngSpan}`,
+    { method: "GET" },
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    centre: { lat: row.centre_lat, lng: row.centre_lng },
+  }));
+}
+
+export async function saveCourseGeometryRow(geometry: CourseGeometry): Promise<CourseGeometry> {
+  const rows = await rest<CourseGeometryRow[]>("course_geometry?on_conflict=id", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=representation",
+    body: JSON.stringify(geometryToRow(geometry)),
+  });
+  const row = rows[0];
+  if (!row) throw new SupabaseRequestError(500, "Course geometry upsert returned no row.");
+  return geometryFromRow(row);
+}
+
+export async function saveCourseGeometryLink(link: {
+  courseKey: string;
+  geometryId: string;
+  holeMap: HoleMap;
+  matchedBy: "gps" | "manual";
+}): Promise<void> {
+  // return=representation, not minimal: PostgREST answers a minimal POST with 201 and an
+  // empty body, which rest() would try to parse as JSON. Every other write here does the
+  // same, so this stays consistent rather than special-casing the shared helper.
+  await rest<unknown[]>("course_geometry_links?on_conflict=course_key", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=representation",
+    body: JSON.stringify({
+      course_key: link.courseKey,
+      geometry_id: link.geometryId,
+      hole_map: link.holeMap,
+      matched_by: link.matchedBy,
+      updated_at: new Date().toISOString(),
+    }),
+  });
 }

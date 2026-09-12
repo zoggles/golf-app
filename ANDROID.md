@@ -27,7 +27,7 @@ npm run android:open
 
 `android:sync` always rebuilds the native web bundle before copying it into the Android project. Use `npm run android:run` to choose a connected emulator/device from the terminal instead.
 
-Voice recording uses the existing browser `MediaRecorder` code inside Capacitor and declares Android's runtime microphone permission. Scorecard capture uses Capacitor's native Camera/Photo Picker. The app stores its local offline mirror in WebView storage and syncs through the same Vercel endpoints as the website.
+Voice recording uses the existing browser `MediaRecorder` code inside Capacitor and declares Android's runtime microphone permission. Caddy View uses plain `navigator.geolocation`: Capacitor's bridge enables geolocation on the WebView and raises the runtime location prompt itself, so no plugin is needed, only the `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` declarations in the manifest. There is no background location permission — position is read only while the map is open. Scorecard capture uses Capacitor's native Camera/Photo Picker. The app stores its local offline mirror in WebView storage and syncs through the same Vercel endpoints as the website.
 
 ## Future Google Play bundle
 
@@ -37,7 +37,7 @@ The project is ready for a release build, but it intentionally has no signing ke
 2. Replace the generated launcher and splash artwork in Android Studio.
 3. Create and securely back up a release keystore. Never commit it or its passwords.
 4. Increment `versionCode` and `versionName` in `android/app/build.gradle` for each release.
-5. Complete Play Console privacy/data-safety declarations for microphone, photos, golfer profiles, and round data.
+5. Complete Play Console privacy/data-safety declarations for microphone, photos, location, golfer profiles, and round data. Location is used on-device for distances; a coordinate rounded to about 100 m is sent once per course to identify which course is being played, and never after that.
 
 After configuring signing in Android Studio, use **Build → Generate Signed Bundle / APK → Android App Bundle**. Capacitor can also build a signed AAB from the command line:
 

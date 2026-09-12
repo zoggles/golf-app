@@ -147,3 +147,25 @@ Schema changes belong in Supabase migrations, not in application code.
 ## Course data
 
 Genesee Valley South white-tee data comes from the [Monroe County Parks Golf scorecard](https://monroecountyparksgolf.com/wp-content/uploads/2023/02/Genesee-Valley-S-N-6x12_23-v6-02.14-proof.pdf). Newly researched courses keep their source URL alongside a browser-local course snapshot. Club suggestions are general distance-based guidance, not personalized recommendations.
+
+### Hole geometry
+
+Caddy View draws each hole from OpenStreetMap data, fetched through the Overpass API and
+cached in `course_geometry`. That data is licensed [ODbL](https://opendatacommons.org/licenses/odbl/),
+so every map carries the attribution "© OpenStreetMap contributors" — keep it wherever the
+map is shown.
+
+Geometry is deliberately separate from the scorecard. `courses.id` is `slugify(name + tee)`,
+so one physical course has a row per set of tees, while a green sits in one place whatever
+tee you played from; `course_geometry_links` keys on a normalised `name|location` instead.
+Keeping the two apart also means `games.course_snapshot` never changes shape, so no saved
+round is affected.
+
+OSM hole ways start at the back tee, so their lengths run longer than a forward-tee
+scorecard. **The scorecard stays the source of truth for tee-box yardage** — OSM supplies
+the hole shape, the green, and the hazards, and every live number is measured from GPS.
+
+Overpass is called at most once per physical course: the route checks the cache for the key,
+then for any cached course within 2.5 km of the fix, before going out to the network. A
+course OSM has not mapped is recorded as an empty row so it is never looked up again, and
+greens can be captured by standing on them instead.
