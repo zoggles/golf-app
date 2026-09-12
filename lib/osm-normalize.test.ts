@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { bearingDeg, destination, haversineM, metresToYards, yardsToMetres } from "./geo";
 import type { LatLng } from "./hole-geometry";
+import { ARROWHEAD_ELEMENTS } from "./__fixtures__/arrowhead-spencerport";
 import { DURAND_EASTMAN_ELEMENTS } from "./__fixtures__/durand-eastman";
 import { assignHoles, normalizeOsmCourse, type ScorecardHole } from "./osm-normalize";
 import type { OverpassElement } from "./overpass";
@@ -390,5 +391,48 @@ describe("real Durand Eastman geometry", () => {
   it("stays small enough to cache a whole course offline", () => {
     const bytes = JSON.stringify({ geometry: result.geometry, holeMap: result.holeMap }).length;
     expect(bytes).toBeLessThan(60 * 1024);
+  });
+});
+
+describe("a course with a neighbour inside the same radius", () => {
+  // Arrowhead sits about 1.3 km from Pinewood Country Club, so one Overpass query returns
+  // both courses' holes and both number theirs from 1. Without separating them, Arrowhead's
+  // 269 yard opener could come back as Pinewood's 378 yard one.
+  const ARROWHEAD: ScorecardHole[] = [
+    card(1, 4, 266, 7), card(2, 4, 227, 3), card(3, 4, 240, 5),
+    card(4, 3, 150, 15), card(5, 3, 160, 13), card(6, 3, 190, 1),
+    card(7, 3, 110, 17), card(8, 4, 215, 9), card(9, 4, 285, 11),
+    card(10, 4, 325, 8), card(11, 3, 100, 18), card(12, 4, 350, 2),
+    card(13, 4, 254, 6), card(14, 4, 247, 14), card(15, 4, 297, 10),
+    card(16, 4, 360, 4), card(17, 4, 260, 16), card(18, 4, 265, 12),
+  ];
+
+  const result = normalizeOsmCourse({
+    elements: ARROWHEAD_ELEMENTS,
+    fix: { lat: 43.20223, lng: -77.883294 },
+    holes: ARROWHEAD,
+  });
+
+  it("picks the course the player is standing on", () => {
+    expect(result.geometry.name).toContain("Arrowhead");
+  });
+
+  it("keeps its eighteen holes and none of the neighbour's", () => {
+    expect(result.geometry.holes).toHaveLength(18);
+    expect(result.unmatched).toEqual([]);
+  });
+
+  it("gives every scorecard hole the OSM way tagged with that same number", () => {
+    for (const hole of ARROWHEAD) {
+      const geometry = result.geometry.holes.find((item) => item.osmId === result.holeMap[hole.number]);
+      expect(geometry?.ref).toBe(String(hole.number));
+      expect(geometry?.par).toBe(hole.par);
+    }
+  });
+
+  it("does not let the neighbour's longer first hole become hole 1", () => {
+    const first = result.geometry.holes.find((item) => item.osmId === result.holeMap[1])!;
+    // Arrowhead's opener is about 269 yards; Pinewood's is about 378.
+    expect(metresToYards(first.lengthM)).toBeLessThan(320);
   });
 });

@@ -5,6 +5,7 @@ import {
   localProjection,
   nearestPointOnPath,
   pathLengthM,
+  pointInPolygon,
   polygonCentroid,
   polygonRadiusM,
   simplifyPath,
@@ -239,22 +240,64 @@ function readHazards(elements: OverpassElement[], holes: OsmHoleGeometry[]): Cou
   return hazards;
 }
 
+interface CourseCandidate {
+  element: OverpassElement;
+  centre: LatLng;
+  outline: LatLng[] | null;
+}
+
+function readCourseCandidates(elements: OverpassElement[]): CourseCandidate[] {
+  const candidates: CourseCandidate[] = [];
+  for (const element of elements) {
+    if (element.tags?.leisure !== "golf_course") continue;
+    const outline = (element.geometry?.length ?? 0) >= 3 ? geometryOf(element) : null;
+    const centre = element.center ? toLatLng(element.center) : outline ? polygonCentroid(outline) : null;
+    if (!centre) continue;
+    candidates.push({ element, centre, outline });
+  }
+  return candidates;
+}
+
+/**
+ * Whether a feature belongs to this course rather than to a neighbouring one.
+ *
+ * Courses crowd together. Arrowhead in Spencerport sits about 1.3 km from Pinewood, well
+ * inside the radius one query covers, so a blind radius hands back both courses' holes
+ * with their numbers overlapping — and hole 1 could come out as the neighbour's.
+ *
+ * Being inside the course outline settles it. Where no outline is mapped, the nearest
+ * course centre decides.
+ */
+function belongsToCourse(point: LatLng, chosen: CourseCandidate, all: CourseCandidate[]): boolean {
+  if (all.length <= 1) return true;
+  if (chosen.outline && pointInPolygon(point, chosen.outline)) return true;
+
+  let nearest = all[0];
+  let nearestDistance = haversineM(all[0].centre, point);
+  for (const candidate of all.slice(1)) {
+    // An outline the point sits inside beats any centre distance.
+    if (candidate.outline && pointInPolygon(point, candidate.outline)) return false;
+    const distance = haversineM(candidate.centre, point);
+    if (distance < nearestDistance) {
+      nearest = candidate;
+      nearestDistance = distance;
+    }
+  }
+  return nearest.element === chosen.element;
+}
+
 function readCourseIdentity(
   elements: OverpassElement[],
   fix: LatLng,
   holes: OsmHoleGeometry[],
 ): { id: string; name: string; centre: LatLng } {
-  const courses = elements.filter((element) => element.tags?.leisure === "golf_course");
+  const courses = readCourseCandidates(elements);
   let best: { element: OverpassElement; centre: LatLng; distanceM: number } | null = null;
-  for (const element of courses) {
-    const centre = element.center
-      ? toLatLng(element.center)
-      : element.geometry?.length
-        ? polygonCentroid(geometryOf(element))
-        : null;
-    if (!centre) continue;
-    const distanceM = haversineM(centre, fix);
-    if (!best || distanceM < best.distanceM) best = { element, centre, distanceM };
+  for (const candidate of courses) {
+    const distanceM = haversineM(candidate.centre, fix);
+    if (!best || distanceM < best.distanceM) {
+      best = { element: candidate.element, centre: candidate.centre, distanceM };
+    }
   }
 
   if (best) {
@@ -345,9 +388,20 @@ export function assignHoles(candidates: OsmHoleGeometry[], holes: ScorecardHole[
 
 export function normalizeOsmCourse(input: NormalizeInput): NormalizeResult {
   const greens = readGreens(input.elements);
-  const holes = readHoleWays(input.elements, greens);
-  const hazards = readHazards(input.elements, holes);
-  const identity = readCourseIdentity(input.elements, input.fix, holes);
+  const allHoles = readHoleWays(input.elements, greens);
+  const identity = readCourseIdentity(input.elements, input.fix, allHoles);
+
+  // Drop anything belonging to a neighbouring course before numbering begins, so hole 1 is
+  // this course's hole 1 and not the one next door that happens to share the number.
+  const candidates = readCourseCandidates(input.elements);
+  const chosen = candidates.find((candidate) => elementRef(candidate.element) === identity.id);
+  const holes = chosen
+    ? allHoles.filter((hole) => belongsToCourse(hole.greenCentre, chosen, candidates))
+    : allHoles;
+
+  const hazards = readHazards(input.elements, holes).filter(
+    (hazard) => !chosen || belongsToCourse(hazard.centre, chosen, candidates),
+  );
   const holeMap = assignHoles(holes, input.holes);
 
   return {

@@ -41,7 +41,9 @@ export function courseAndHolesQuery(lat: number, lng: number): string {
   return [
     "[out:json][timeout:90];",
     `nwr["leisure"="golf_course"](around:2500,${fix})->.course;`,
-    ".course out tags center;",
+    // geom as well as center: the polygon is what separates this course's holes from a
+    // neighbour's when the two sit inside the same radius.
+    ".course out tags geom center;",
     `way["golf"](around:1400,${fix})->.features;`,
     ".features out tags geom;",
   ].join("\n");
