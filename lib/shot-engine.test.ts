@@ -319,3 +319,59 @@ describe("par 3 tee shots", () => {
     expect(plan.targetYds).toBeGreaterThan(210);
   });
 });
+
+describe("big irregular water", () => {
+  const base = { bag: DEFAULT_BAG, accuracyM: 5 };
+
+  /** A long pond lying alongside the hole, only clipping the line near its end. */
+  function pondBesideTheHole(): CourseHazard {
+    const centre = destination(destination(TEE, UP_THE_HOLE, yardsToMetres(150)), 90, yardsToMetres(80));
+    const outline = [
+      destination(centre, 0, yardsToMetres(90)),
+      destination(centre, 90, yardsToMetres(20)),
+      destination(centre, 180, yardsToMetres(90)),
+      destination(centre, 270, yardsToMetres(20)),
+    ];
+    return { osmId: "way/pond", kind: "water", outline, centre, radiusM: yardsToMetres(90) };
+  }
+
+  it("measures the crossing, not the radius of a circle round the whole pond", () => {
+    // As a circle this pond reads as 180 yards of carry straight across the hole. Its real
+    // intersection with the shot line is a fraction of that, and everything downstream --
+    // the club, the target, whether it is even in play -- hangs on the difference.
+    const pond = pondBesideTheHole();
+    const carries = hazardsOnLine(TEE, upTheHole(230), [pond]);
+    const span = carries.length ? carries[0].farEdgeYds - carries[0].nearEdgeYds : 0;
+    expect(span).toBeLessThan(120);
+  });
+
+  it("does not lay a 270 yard par 4 up to a wedge because of a pond beside it", () => {
+    const plan = planShot({ ...base, from: TEE, hole: hole(270), hazards: [pondBesideTheHole()] });
+    expect(plan.club!.club.carryYds).toBeGreaterThan(120);
+    expect(plan.targetYds).toBeGreaterThan(120);
+  });
+
+  it("still reports water that genuinely crosses the line", () => {
+    const centre = destination(TEE, UP_THE_HOLE, yardsToMetres(150));
+    const outline = [
+      destination(centre, 0, yardsToMetres(20)),
+      destination(centre, 90, yardsToMetres(60)),
+      destination(centre, 180, yardsToMetres(20)),
+      destination(centre, 270, yardsToMetres(60)),
+    ];
+    const crossing: CourseHazard = { osmId: "way/creek", kind: "water", outline, centre, radiusM: yardsToMetres(60) };
+    const carries = hazardsOnLine(TEE, upTheHole(230), [crossing]);
+    expect(carries).toHaveLength(1);
+    expect(carries[0].nearEdgeYds).toBeLessThan(150);
+    expect(carries[0].farEdgeYds).toBeGreaterThan(150);
+  });
+
+  it("names the hazard it laid up for, even though the shot no longer reaches it", () => {
+    const water = hazardAt(190, yardsToMetres(25));
+    const plan = planShot({ ...base, from: TEE, hole: hole(400), hazards: [water] });
+    if (plan.laidUp) {
+      expect(plan.carries.some((carry) => !carry.carried)).toBe(true);
+      expect(plan.reason).toMatch(/\d+/);
+    }
+  });
+});

@@ -2,6 +2,7 @@ import type { Bag, Club, ClubPick } from "./bag";
 import { longestCarry, longestClubWithin, pickClub, shortestCarry, stepDown } from "./bag";
 import {
   bearingDeg,
+  destination,
   haversineM,
   metresToYards,
   nearestPointOnPath,
@@ -121,12 +122,61 @@ export function classifyShot(
   return { kind, toGreenYds, onGreen, offCentrelineYds, atTee };
 }
 
+/** How far past the target to keep looking, so water just beyond the landing zone counts. */
+const LOOK_BEYOND_TARGET = 1.25;
+/** Steps taken along the shot line when measuring how much of it a hazard covers. */
+const LINE_SAMPLES = 48;
+
 /**
- * Hazards the shot line crosses, as carry numbers.
+ * The stretch of the shot line a hazard actually covers, in metres from the player.
  *
- * A hazard counts when its circle comes within the corridor of the line and sits between
- * the player and the target. Bunkers carry no outline, so everything works off centre and
- * radius, which is also accurate enough for water at this scale.
+ * Walking the line and asking "is this point in the water" is the only honest way to
+ * measure an irregular hazard. Treating one as a circle round its centre is wildly wrong
+ * for real water: the pond on Arrowhead's first hole has a 97 yard radius, so as a circle
+ * it reads as 194 yards of carry straight across a 269 yard hole, and no club on earth
+ * clears it. Its actual crossing is a fraction of that.
+ *
+ * Bunkers keep the circle. They carry no outline and are small and round enough that it
+ * costs nothing.
+ */
+function hazardExtentM(
+  from: LatLng,
+  to: LatLng,
+  hazard: CourseHazard,
+  corridorM: number,
+): { nearM: number; farM: number } | null {
+  const shotM = haversineM(from, to);
+  const hasOutline = hazard.outline.length >= 3;
+
+  if (!hasOutline) {
+    const nearest = nearestPointOnPath([from, to], hazard.centre);
+    if (nearest.distanceM - hazard.radiusM > corridorM) return null;
+    return { nearM: nearest.alongM - hazard.radiusM, farM: nearest.alongM + hazard.radiusM };
+  }
+
+  // A closed ring, so the edge nearest a sample is measured rather than only the vertices.
+  const ring = [...hazard.outline, hazard.outline[0]];
+  const bearing = bearingDeg(from, to);
+  const reach = shotM * LOOK_BEYOND_TARGET;
+
+  let nearM = Infinity;
+  let farM = -Infinity;
+  for (let step = 0; step <= LINE_SAMPLES; step += 1) {
+    const alongM = (reach * step) / LINE_SAMPLES;
+    const point = destination(from, bearing, alongM);
+    const covered =
+      pointInPolygon(point, hazard.outline) ||
+      nearestPointOnPath(ring, point).distanceM <= corridorM;
+    if (!covered) continue;
+    nearM = Math.min(nearM, alongM);
+    farM = Math.max(farM, alongM);
+  }
+
+  return farM < nearM ? null : { nearM, farM };
+}
+
+/**
+ * Hazards the shot line crosses, as carry numbers, nearest first.
  */
 export function hazardsOnLine(
   from: LatLng,
@@ -138,23 +188,19 @@ export function hazardsOnLine(
   if (shotM < 1) return [];
 
   const corridorM = yardsToMetres(corridorYds);
-  const line = [from, to];
   const carries: HazardCarry[] = [];
 
   for (const hazard of hazards) {
-    const nearest = nearestPointOnPath(line, hazard.centre);
-    if (nearest.distanceM - hazard.radiusM > corridorM) continue;
-
-    const nearEdgeM = nearest.alongM - hazard.radiusM;
-    const farEdgeM = nearest.alongM + hazard.radiusM;
+    const extent = hazardExtentM(from, to, hazard, corridorM);
+    if (!extent) continue;
     // Behind the player, or past where the ball is going: not in the way.
-    if (farEdgeM <= 0 || nearEdgeM >= shotM + hazard.radiusM) continue;
+    if (extent.farM <= 0 || extent.nearM >= shotM + hazard.radiusM) continue;
 
     carries.push({
       hazard,
-      nearEdgeYds: metresToYards(Math.max(0, nearEdgeM)),
-      farEdgeYds: metresToYards(farEdgeM),
-      carried: metresToYards(shotM) > metresToYards(farEdgeM),
+      nearEdgeYds: metresToYards(Math.max(0, extent.nearM)),
+      farEdgeYds: metresToYards(extent.farM),
+      carried: metresToYards(shotM) > metresToYards(extent.farM),
     });
   }
 
@@ -205,6 +251,8 @@ interface TargetChoice {
   laidUp: boolean;
   recovering: boolean;
   reason: string;
+  /** What forced the layup, kept so the readout can name the number being laid up to. */
+  blockedBy: HazardCarry | null;
 }
 
 /** Walks the centreline to the point a full swing would reach, never past the green. */
@@ -222,7 +270,14 @@ function chooseTarget(input: PlanShotInput, context: ShotContext): TargetChoice 
   const { from, hole, bag, hazards } = input;
 
   if (context.kind === "putt") {
-    return { target: hole.greenCentre, club: null, laidUp: false, recovering: false, reason: "On the green." };
+    return {
+      target: hole.greenCentre,
+      club: null,
+      laidUp: false,
+      recovering: false,
+      reason: "On the green.",
+      blockedBy: null,
+    };
   }
 
   if (context.kind === "short-game" || context.kind === "approach") {
@@ -237,6 +292,7 @@ function chooseTarget(input: PlanShotInput, context: ShotContext): TargetChoice 
       reason: recovering
         ? "Centre of the green — take the safe line back."
         : "Centre of the green.",
+      blockedBy: null,
     };
   }
 
@@ -246,6 +302,7 @@ function chooseTarget(input: PlanShotInput, context: ShotContext): TargetChoice 
   let club = pickClub(bag, straightYds)?.club ?? null;
   let target = advanced;
   let laidUp = false;
+  let blockedBy: HazardCarry | null = null;
   let reason = context.kind === "tee" ? "Position off the tee." : "Advance down the fairway.";
 
   for (let guard = 0; guard < bag.clubs.length && club; guard += 1) {
@@ -265,7 +322,10 @@ function chooseTarget(input: PlanShotInput, context: ShotContext): TargetChoice 
       if (!layupClub) break;
       club = layupClub;
       laidUp = true;
-      reason = `Lay up short of the ${hazardLabel(trouble.hazard)}.`;
+      // Kept because once the target moves short of it this hazard stops intersecting the
+      // line, and a readout saying "lay up" without saying what for is no use on a tee.
+      blockedBy = trouble;
+      reason = `Lay up short of the ${hazardLabel(trouble.hazard)} at ${Math.round(trouble.nearEdgeYds)}.`;
     }
 
     const nearest = nearestPointOnPath(hole.centreline, from);
@@ -275,7 +335,7 @@ function chooseTarget(input: PlanShotInput, context: ShotContext): TargetChoice 
   const recovering = context.offCentrelineYds > OFF_LINE_RECOVERY_YDS;
   if (recovering && !laidUp) reason = "Back to the centre of the fairway.";
 
-  return { target, club, laidUp, recovering, reason };
+  return { target, club, laidUp, recovering, reason, blockedBy };
 }
 
 function hazardLabel(hazard: CourseHazard): string {
@@ -290,10 +350,14 @@ export function planShot(input: PlanShotInput): ShotPlan {
   const choice = chooseTarget(input, context);
 
   const targetYds = metresToYards(haversineM(from, choice.target));
-  const carries = hazardsOnLine(from, choice.target, hazards).map((carry) => ({
+  const onLine = hazardsOnLine(from, choice.target, hazards).map((carry) => ({
     ...carry,
     carried: targetYds > carry.farEdgeYds,
   }));
+  const carries =
+    choice.blockedBy && !onLine.some((carry) => carry.hazard.osmId === choice.blockedBy!.hazard.osmId)
+      ? [...onLine, { ...choice.blockedBy, carried: false }].sort((left, right) => left.nearEdgeYds - right.nearEdgeYds)
+      : onLine;
 
   const pick = choice.club
     ? { club: choice.club, deltaYds: Math.round(choice.club.carryYds - targetYds), confident: targetYds <= longestCarry(bag), alternative: stepDown(bag, choice.club) }
