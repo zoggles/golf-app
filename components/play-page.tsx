@@ -20,7 +20,7 @@ import {
 import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/courses";
 import { apiUrl } from "@/lib/api-url";
 import { authHeaders } from "@/lib/auth-client";
-import { completeRound, discardActiveRound, firstUnscoredHole, saveCourse, startRound, updateRoundHoleMetrics, updateRoundScore } from "@/lib/storage";
+import { completeRound, discardActiveRound, firstUnscoredHole, forgetCourse, saveCourse, startRound, updateRoundHoleMetrics, updateRoundScore } from "@/lib/storage";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, summarizeRound } from "@/lib/metrics";
 import { nextHoleAfterVoiceUpdates, parseHoleMetricCommands, parseScoreCommands, parseStartCommand, type HoleMetricCommand, type ScoreCommand } from "@/lib/voice-parser";
 import { COMMON_TEES, courseListOptions, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeOptionLabel } from "@/lib/tee-selection";
@@ -89,6 +89,7 @@ function RoundStarter() {
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [courseConfirmed, setCourseConfirmed] = useState(true);
+  const [confirmingForget, setConfirmingForget] = useState(false);
   const lookupAbortRef = useRef<AbortController | null>(null);
   const lookupSequenceRef = useRef(0);
 
@@ -217,6 +218,7 @@ function RoundStarter() {
     const course = savedCourseOptions.find((item) => item.id === courseId);
     if (!course) return;
     cancelPendingLookup();
+    setConfirmingForget(false);
     setSelectedCourse(course);
     setTeeChoice(course.tee);
     setCourseConfirmed(true);
@@ -224,6 +226,24 @@ function RoundStarter() {
     setMessage(`${course.shortName} selected.`);
     if (course.holes.length === 9) setSegment("front9");
   }
+
+  /**
+   * Drops a course that research got wrong. Every tee saved for the same physical course
+   * goes with it, since they are all the same mistake.
+   */
+  function forgetSelectedCourse() {
+    const doomed = availableCourses.filter((course) => samePhysicalCourse(course, selectedCourse));
+    for (const course of doomed) forgetCourse(course.id);
+    setConfirmingForget(false);
+    setSelectedCourse(GENESEE_VALLEY_SOUTH);
+    setTeeChoice(GENESEE_VALLEY_SOUTH.tee);
+    setCourseConfirmed(true);
+    setLookupError(null);
+    setMessage(`Forgot ${selectedCourse.shortName}. Search again with the city and state.`);
+  }
+
+  const playedHere = data.rounds.some((round) => samePhysicalCourse(round.course, selectedCourse));
+  const isSeedCourse = selectedCourse.id === GENESEE_VALLEY_SOUTH.id;
 
   function beginRound() {
     startRound(selectedCourse, segment, phrase || undefined);
@@ -270,6 +290,19 @@ function RoundStarter() {
             <span><strong>{selectedCourse.shortName}</strong><small><MapPin size={13} /> {selectedCourse.location}</small></span>
             <Check className="choice-check" size={19} weight="bold" />
           </div>
+          {isSeedCourse || playedHere ? null : confirmingForget ? (
+            <div className="course-forget confirming">
+              <p>Forget {selectedCourse.shortName} in {selectedCourse.location}?</p>
+              <div>
+                <button type="button" onClick={forgetSelectedCourse}>Forget it</button>
+                <button type="button" onClick={() => setConfirmingForget(false)}>Keep it</button>
+              </div>
+            </div>
+          ) : (
+            <button type="button" className="course-forget" onClick={() => setConfirmingForget(true)}>
+              <Trash size={13} /> Wrong course? Forget it and search again
+            </button>
+          )}
         </div>
         <div className="field-group">
           <label htmlFor="tee-choice">Tee</label>

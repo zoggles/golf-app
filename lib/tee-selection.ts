@@ -1,3 +1,4 @@
+import { normalizeLocation, phraseContradictsLocation } from "./course-location";
 import type { Course } from "./types";
 
 export const COMMON_TEES = ["Forward", "Red", "Gold", "White", "Blue", "Black"];
@@ -45,7 +46,7 @@ function editDistance(left: string, right: string) {
   return row[right.length];
 }
 
-export function courseMatchesPhrase(course: Course, phrase: string) {
+function nameMatchesPhrase(course: Course, phrase: string) {
   const phraseWords = normalizeTee(phrase).split(" ").filter(Boolean);
   const ignoredWords = new Set(["the", "golf", "course", "club", "country", "at", "of"]);
   const names = [course.name, course.shortName];
@@ -62,8 +63,27 @@ export function courseMatchesPhrase(course: Course, phrase: string) {
   });
 }
 
+/**
+ * Whether a saved course is the one a phrase is asking for.
+ *
+ * The name alone is not enough. Course names repeat across the country, and after the
+ * generic words are dropped a name can come down to a single token — every Arrowhead in
+ * America answers to "arrowhead". So a phrase that names a different place is treated as a
+ * request for a course we do not have yet, which sends it to a fresh lookup instead of
+ * silently loading the wrong scorecard.
+ */
+export function courseMatchesPhrase(course: Course, phrase: string) {
+  if (!nameMatchesPhrase(course, phrase)) return false;
+  return !phraseContradictsLocation(course.name, course.location, phrase);
+}
+
 export function samePhysicalCourse(left: Course, right: Course) {
-  return normalizeTee(left.name) === normalizeTee(right.name) && normalizeTee(left.location) === normalizeTee(right.location);
+  // Locations go through normalizeLocation so "Rochester, NY" and "Rochester, New York"
+  // are one place; the catalogue holds both spellings for a single course.
+  return (
+    normalizeTee(left.name) === normalizeTee(right.name) &&
+    normalizeLocation(left.location) === normalizeLocation(right.location)
+  );
 }
 
 /** One entry per course for course pickers, preferring its verified White card. */

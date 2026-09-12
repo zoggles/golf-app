@@ -11,7 +11,8 @@ import type { Course, GolfData, GolfRound } from "./types";
 export type PendingOperation =
   | { kind: "save-course"; golferId: string; course: Course }
   | { kind: "save-game"; golferId: string; round: GolfRound }
-  | { kind: "delete-game"; golferId: string; roundId: string };
+  | { kind: "delete-game"; golferId: string; roundId: string }
+  | { kind: "delete-course"; golferId: string; courseId: string };
 
 /**
  * Adds an operation, collapsing it into an earlier pending write for the same
@@ -30,6 +31,16 @@ export function enqueueOperation(queue: PendingOperation[], operation: PendingOp
     const index = queue.findIndex((item) => mine(item) && item.kind === "save-game" && item.round.id === operation.round.id);
     if (index === -1) return [...queue, operation];
     return queue.map((item, position) => (position === index ? operation : item));
+  }
+
+  if (operation.kind === "delete-course") {
+    // A delete supersedes any queued writes for that course.
+    const remaining = queue.filter(
+      (item) =>
+        !(mine(item) && item.kind === "save-course" && item.course.id === operation.courseId) &&
+        !(mine(item) && item.kind === "delete-course" && item.courseId === operation.courseId),
+    );
+    return [...remaining, operation];
   }
 
   // A delete supersedes any queued writes for that game.
@@ -70,6 +81,9 @@ export function applyOperations(data: GolfData, operations: PendingOperation[]):
     }
     if (operation.kind === "save-game") {
       return { ...current, rounds: upsertRound(current.rounds, operation.round) };
+    }
+    if (operation.kind === "delete-course") {
+      return { ...current, courses: current.courses.filter((course) => course.id !== operation.courseId) };
     }
     return { ...current, rounds: current.rounds.filter((round) => round.id !== operation.roundId) };
   }, data);

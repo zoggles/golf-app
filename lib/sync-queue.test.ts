@@ -95,3 +95,44 @@ describe("applyOperations", () => {
     expect(result.activeRoundId).toBeNull();
   });
 });
+
+describe("forgetting a course", () => {
+  const wrongCourse = { ...GENESEE_VALLEY_SOUTH, id: "arrowhead-co", name: "Arrowhead Golf Club", location: "Littleton, CO" };
+
+  it("supersedes a queued save of the same course", () => {
+    const queued = enqueueOperation([], { kind: "save-course", golferId: NELL, course: wrongCourse });
+    const after = enqueueOperation(queued, { kind: "delete-course", golferId: NELL, courseId: wrongCourse.id });
+    expect(after).toEqual([{ kind: "delete-course", golferId: NELL, courseId: wrongCourse.id }]);
+  });
+
+  it("does not collapse a delete for a different course", () => {
+    const queued = enqueueOperation([], { kind: "save-course", golferId: NELL, course: GENESEE_VALLEY_SOUTH });
+    const after = enqueueOperation(queued, { kind: "delete-course", golferId: NELL, courseId: wrongCourse.id });
+    expect(after).toHaveLength(2);
+  });
+
+  it("leaves another golfer's queued save alone", () => {
+    const queued = enqueueOperation([], { kind: "save-course", golferId: RAY, course: wrongCourse });
+    const after = enqueueOperation(queued, { kind: "delete-course", golferId: NELL, courseId: wrongCourse.id });
+    expect(after).toHaveLength(2);
+  });
+
+  it("drops the course when replayed over a server snapshot", () => {
+    const snapshot: GolfData = { ...emptyData, courses: [wrongCourse, GENESEE_VALLEY_SOUTH] };
+    const operations: PendingOperation[] = [{ kind: "delete-course", golferId: NELL, courseId: wrongCourse.id }];
+    expect(applyOperations(snapshot, operations).courses).toEqual([GENESEE_VALLEY_SOUTH]);
+  });
+
+  it("leaves rounds untouched", () => {
+    const snapshot: GolfData = { ...emptyData, courses: [wrongCourse], rounds: [round("r1")] };
+    const after = applyOperations(snapshot, [{ kind: "delete-course", golferId: NELL, courseId: wrongCourse.id }]);
+    expect(after.rounds).toHaveLength(1);
+    expect(after.courses).toEqual([]);
+  });
+
+  it("is idempotent when the queue drains twice", () => {
+    const once = enqueueOperation([], { kind: "delete-course", golferId: NELL, courseId: wrongCourse.id });
+    const twice = enqueueOperation(once, { kind: "delete-course", golferId: NELL, courseId: wrongCourse.id });
+    expect(twice).toHaveLength(1);
+  });
+});

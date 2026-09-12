@@ -122,7 +122,8 @@ function persistQueue(): void {
 type UnownedOperation =
   | { kind: "save-course"; course: Course }
   | { kind: "save-game"; round: GolfRound }
-  | { kind: "delete-game"; roundId: string };
+  | { kind: "delete-game"; roundId: string }
+  | { kind: "delete-course"; courseId: string };
 
 function queueOperation(operation: UnownedOperation): void {
   const golferId = currentGolferId();
@@ -163,7 +164,9 @@ async function sendOperation(operation: PendingOperation): Promise<void> {
             headers,
             body: JSON.stringify(operation.round),
           })
-        : fetch(apiUrl(`/api/games?id=${encodeURIComponent(operation.roundId)}`), { method: "DELETE", headers });
+        : operation.kind === "delete-game"
+          ? fetch(apiUrl(`/api/games?id=${encodeURIComponent(operation.roundId)}`), { method: "DELETE", headers })
+          : fetch(apiUrl(`/api/courses?id=${encodeURIComponent(operation.courseId)}`), { method: "DELETE", headers });
 
   const response = await request;
   if (response.ok) return;
@@ -443,6 +446,20 @@ export function completeRound(roundId: string): void {
     { ...target, status: "completed", completedAt: new Date().toISOString() },
     null,
   );
+}
+
+/**
+ * Removes a course from the catalogue.
+ *
+ * Course research occasionally lands on the right name in the wrong state, and until this
+ * existed the only way out was editing the database by hand. A course any round was played
+ * on is kept: the server refuses it, and the local mirror is restored on the next sync.
+ */
+export function forgetCourse(courseId: string): void {
+  const data = readGolfData();
+  if (data.rounds.some((round) => round.courseId === courseId)) return;
+  setData({ ...data, courses: data.courses.filter((course) => course.id !== courseId) });
+  queueOperation({ kind: "delete-course", courseId });
 }
 
 export function discardActiveRound(roundId: string): void {

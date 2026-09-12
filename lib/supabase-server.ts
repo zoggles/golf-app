@@ -207,6 +207,27 @@ export async function saveGameRow(round: GolfRound, golferId: string): Promise<G
   return gameFromRow(row);
 }
 
+/**
+ * Removes a course from the shared catalogue.
+ *
+ * Refuses while any round still points at it, so history cannot be orphaned. Rounds carry
+ * their own course_snapshot, but course_id is a real foreign key and the catalogue is what
+ * the course picker reads.
+ */
+export async function deleteCourseRow(courseId: string): Promise<"deleted" | "in-use"> {
+  const inUse = await rest<Array<{ id: string }>>(
+    `games?select=id&course_id=eq.${encodeURIComponent(courseId)}&limit=1`,
+    { method: "GET" },
+  );
+  if (inUse.length > 0) return "in-use";
+
+  await rest<undefined>(`courses?id=eq.${encodeURIComponent(courseId)}`, {
+    method: "DELETE",
+    prefer: "return=minimal",
+  });
+  return "deleted";
+}
+
 export async function deleteGameRow(gameId: string, golferId: string): Promise<void> {
   await rest<undefined>(
     `games?id=eq.${encodeURIComponent(gameId)}&golfer_id=eq.${encodeURIComponent(golferId)}`,
