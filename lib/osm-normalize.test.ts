@@ -3,6 +3,7 @@ import { bearingDeg, destination, haversineM, metresToYards, yardsToMetres } fro
 import type { LatLng } from "./hole-geometry";
 import { ARROWHEAD_ELEMENTS } from "./__fixtures__/arrowhead-spencerport";
 import { DURAND_EASTMAN_ELEMENTS } from "./__fixtures__/durand-eastman";
+import { GENESEE_VALLEY_ELEMENTS, GENESEE_VALLEY_OUTLINES } from "./__fixtures__/genesee-valley";
 import { assignHoles, normalizeOsmCourse, type ScorecardHole } from "./osm-normalize";
 import type { OverpassElement } from "./overpass";
 
@@ -434,5 +435,77 @@ describe("a course with a neighbour inside the same radius", () => {
     const first = result.geometry.holes.find((item) => item.osmId === result.holeMap[1])!;
     // Arrowhead's opener is about 269 yards; Pinewood's is about 378.
     expect(metresToYards(first.lengthM)).toBeLessThan(320);
+  });
+});
+
+describe("two courses sharing a park", () => {
+  // Genesee Valley South's White card. North shares the park, the clubhouse and several numbers.
+  const SOUTH_WHITE = [
+    [1, 4, 370, 5], [2, 4, 333, 15], [3, 3, 222, 7], [4, 3, 180, 11], [5, 4, 251, 17], [6, 4, 371, 1],
+    [7, 4, 338, 9], [8, 4, 325, 13], [9, 4, 435, 3], [10, 4, 305, 6], [11, 3, 110, 18], [12, 4, 290, 16],
+    [13, 3, 153, 8], [14, 3, 157, 10], [15, 4, 385, 2], [16, 4, 315, 12], [17, 4, 305, 14], [18, 4, 385, 4],
+  ].map(([number, par, yards, handicap]) => card(number, par, yards, handicap));
+  const SOUTH_WAYS = Object.fromEntries(
+    [702332128, 702332132, 702332137, 702332141, 702332145, 702332149, 702332153, 702332157, 702332161,
+      704229730, 704229734, 704229737, 704229741, 704229745, 704229749, 704229752, 704229755, 704229757]
+      .map((id, index) => [index + 1, `way/${id}`]),
+  );
+  // Out on South's first hole, which is nearer North's centre than South's own.
+  const FIRST_HOLE: LatLng = { lat: 43.11186, lng: -77.65463 };
+
+  it("stands nearer North's centre on South's first hole", () => {
+    const north = { lat: 43.112571, lng: -77.650779 };
+    const south = { lat: 43.108652, lng: -77.654341 };
+    expect(haversineM(FIRST_HOLE, north)).toBeLessThan(haversineM(FIRST_HOLE, south));
+  });
+
+  it("resolves South's eighteen when the scorecard names South", () => {
+    const result = normalizeOsmCourse({
+      elements: GENESEE_VALLEY_ELEMENTS,
+      fix: FIRST_HOLE,
+      holes: SOUTH_WHITE,
+      courseName: "genesee valley golf course south",
+    });
+    expect(result.geometry.name).toBe("Genesee Valley Golf Course South");
+    expect(result.holeMap).toEqual(SOUTH_WAYS);
+    expect(result.unmatched).toEqual([]);
+  });
+
+  it("would have taken the nearer North without the name", () => {
+    const result = normalizeOsmCourse({ elements: GENESEE_VALLEY_ELEMENTS, fix: FIRST_HOLE, holes: SOUTH_WHITE });
+    expect(result.geometry.name).toBe("Genesee Valley Golf Course North");
+  });
+
+  it("keeps only South's own holes once the outlines arrive", () => {
+    const result = normalizeOsmCourse({
+      elements: [...GENESEE_VALLEY_ELEMENTS, ...GENESEE_VALLEY_OUTLINES],
+      fix: FIRST_HOLE,
+      holes: SOUTH_WHITE,
+      courseName: "genesee valley golf course south",
+    });
+    expect(result.holeMap).toEqual(SOUTH_WAYS);
+    expect(result.geometry.holes.map((hole) => hole.osmId).sort()).toEqual(Object.values(SOUTH_WAYS).sort());
+  });
+
+  it("folds a course's centre and outline together when they arrive separately", () => {
+    const { greenCentre } = straightHole(ORIGIN, 90, 300);
+    const outline = [
+      destination(ORIGIN, 225, 200),
+      destination(ORIGIN, 315, 200),
+      destination(greenCentre, 45, 200),
+      destination(greenCentre, 135, 200),
+    ];
+    const elements: OverpassElement[] = [
+      // Park East's centre is well west of its hole; Park West's sits right by the green.
+      { type: "way", id: 9001, tags: { leisure: "golf_course", name: "Park East" }, center: node(destination(ORIGIN, 270, 600)) },
+      { type: "way", id: 9001, tags: { leisure: "golf_course", name: "Park East" }, geometry: [...outline, outline[0]].map(node) },
+      { type: "way", id: 9002, tags: { leisure: "golf_course", name: "Park West" }, center: node(destination(greenCentre, 0, 100)) },
+      greenWay(greenCentre),
+      holeWay([ORIGIN, greenCentre], { ref: "1", par: "4" }),
+    ];
+    // The hole is inside Park East's outline, which only counts once the two copies are one.
+    const result = normalizeOsmCourse({ elements, fix: ORIGIN, holes: [card(1, 4, 328, 1)], courseName: "Park East Golf Club" });
+    expect(result.geometry.id).toBe("way/9001");
+    expect(result.unmatched).toEqual([]);
   });
 });

@@ -20,6 +20,8 @@ import {
 import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/courses";
 import { apiUrl } from "@/lib/api-url";
 import { authHeaders } from "@/lib/auth-client";
+import { refreshCourseGeometry } from "@/lib/course-geometry-cache";
+import { courseKey } from "@/lib/course-key";
 import { completeRound, discardActiveRound, firstUnscoredHole, forgetCourse, saveCourse, startRound, updateRoundHoleMetrics, updateRoundScore } from "@/lib/storage";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, summarizeRound } from "@/lib/metrics";
 import { nextHoleAfterVoiceUpdates, parseHoleMetricCommands, parseScoreCommands, type HoleMetricCommand, type ScoreCommand } from "@/lib/voice-parser";
@@ -344,6 +346,13 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
       delete root.dataset.liveRound;
     };
   }, []);
+
+  // Download the hole map the moment a round opens, while there is still signal, so Caddy View
+  // works on a course with none, even if it is only switched on at the first tee.
+  const hasRound = Boolean(round);
+  useEffect(() => {
+    if (hasRound) void refreshCourseGeometry(courseKey(course), course.holes.length);
+  }, [hasRound, course]);
 
   const currentHole = course.holes.find((item) => item.number === selectedHole) ?? course.holes[0];
 

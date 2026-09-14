@@ -9,8 +9,9 @@ import type { ScorecardHole } from "./osm-normalize";
  * Offline mirror of course geometry.
  *
  * Not scoped by golfer: a green is in the same place for everyone, so this follows the
- * shared-catalogue treatment courses already get. Cached entries never expire either — a
- * golf hole does not move, and only a hand capture replaces one.
+ * shared-catalogue treatment courses already get. A complete copy never expires either — a
+ * golf hole does not move. A copy with gaps is the exception: it is checked again, because the
+ * server may since have learned the holes it was missing.
  *
  * This is what lets the map work in a dead zone. GPS itself needs no network, so once the
  * course is cached the whole feature runs offline.
@@ -34,6 +35,10 @@ const listeners = new Set<() => void>();
 const states = new Map<string, GeometryState>();
 const inFlight = new Set<string>();
 const lastFailureAt = new Map<string, number>();
+/** Courses whose copy with gaps has had its second look this session. */
+const rechecked = new Set<string>();
+/** Courses already downloaded ahead of play this session. */
+const refreshed = new Set<string>();
 
 function publish(courseKey: string, state: GeometryState): void {
   states.set(courseKey, state);
@@ -62,6 +67,13 @@ function persist(bundle: CourseGeometryBundle): void {
   } catch {
     // A full quota costs the offline copy, not the round.
   }
+}
+
+/** Scorecard holes this copy can actually draw: mapped to a hole that is really in it. */
+export function mappedHoleCount(bundle: CourseGeometryBundle | null): number {
+  if (!bundle) return 0;
+  const present = new Set(bundle.geometry.holes.map((hole) => hole.osmId));
+  return Object.values(bundle.holeMap).filter((osmId) => present.has(osmId)).length;
 }
 
 function statusFor(bundle: CourseGeometryBundle): GeometryStatus {
@@ -100,19 +112,27 @@ export interface EnsureGeometryInput {
 }
 
 /**
- * Resolves geometry for a course, once. Serves the cache when it can, and otherwise asks
- * the server, which is the only place that ever talks to OpenStreetMap.
+ * Resolves geometry for a course. Serves the cache when it can, and otherwise asks the
+ * server, which is the only place that ever talks to OpenStreetMap.
+ *
+ * A copy with every hole is final. A copy with gaps, such as the empty answer saved when the
+ * course was first looked up from somewhere other than the course, gets one more look a
+ * session, and is only ever replaced by one that knows at least as many holes.
  */
 export async function ensureCourseGeometry(input: EnsureGeometryInput): Promise<void> {
   const { courseKey } = input;
   const existing = readGeometryState(courseKey);
-  if (existing.bundle || inFlight.has(courseKey)) return;
+  if (inFlight.has(courseKey)) return;
+
+  const incomplete = existing.bundle !== null && mappedHoleCount(existing.bundle) < input.holes.length;
+  if (existing.bundle && (!incomplete || rechecked.has(courseKey))) return;
 
   const failedAt = lastFailureAt.get(courseKey);
   if (failedAt && Date.now() - failedAt < RETRY_AFTER_MS) return;
 
+  if (incomplete) rechecked.add(courseKey);
   inFlight.add(courseKey);
-  publish(courseKey, { bundle: null, status: "loading", error: null });
+  if (!existing.bundle) publish(courseKey, { bundle: null, status: "loading", error: null });
 
   try {
     const response = await fetch(apiUrl("/api/course-geometry"), {
@@ -130,16 +150,50 @@ export async function ensureCourseGeometry(input: EnsureGeometryInput): Promise<
     const result = (await response.json()) as { bundle?: CourseGeometryBundle | null; error?: string };
     if (!response.ok) throw new Error(result.error || "Could not load the hole map.");
     if (!result.bundle) throw new Error("No hole map for this course yet.");
-    adopt(result.bundle);
+    if (!existing.bundle || mappedHoleCount(result.bundle) >= mappedHoleCount(existing.bundle)) {
+      adopt(result.bundle);
+    }
   } catch (cause) {
     lastFailureAt.set(courseKey, Date.now());
-    publish(courseKey, {
-      bundle: null,
-      status: "error",
-      error: cause instanceof Error ? cause.message : "Could not load the hole map.",
-    });
+    // A failed second look keeps the copy already on the phone.
+    if (!existing.bundle) {
+      publish(courseKey, {
+        bundle: null,
+        status: "error",
+        error: cause instanceof Error ? cause.message : "Could not load the hole map.",
+      });
+    }
   } finally {
     inFlight.delete(courseKey);
+  }
+}
+
+/**
+ * Downloads a course's hole map ahead of play.
+ *
+ * Needs no position, because it only reads what the server already holds, so it runs the
+ * moment a round opens: at home on Wi-Fi, before the first tee and any dead zone. A copy that
+ * already has every hole is left alone, and nothing replaces a copy with one that knows fewer.
+ */
+export async function refreshCourseGeometry(courseKey: string, holeCount: number): Promise<void> {
+  if (typeof window === "undefined" || refreshed.has(courseKey) || inFlight.has(courseKey)) return;
+  const existing = readGeometryState(courseKey);
+  if (existing.bundle && mappedHoleCount(existing.bundle) >= holeCount) return;
+
+  try {
+    const response = await fetch(apiUrl(`/api/course-geometry?courseKey=${encodeURIComponent(courseKey)}`), {
+      cache: "no-store",
+      headers: authHeaders(),
+    });
+    if (!response.ok) return;
+    refreshed.add(courseKey);
+    const result = (await response.json()) as { bundle?: CourseGeometryBundle | null };
+    if (result.bundle && mappedHoleCount(result.bundle) > mappedHoleCount(existing.bundle)) {
+      lastFailureAt.delete(courseKey);
+      adopt(result.bundle);
+    }
+  } catch {
+    // Offline or signed out: keep whatever copy there is. Caddy View resolves it at the course.
   }
 }
 

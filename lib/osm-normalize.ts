@@ -21,6 +21,7 @@ import type {
 } from "./hole-geometry";
 import { OSM_ATTRIBUTION } from "./hole-geometry";
 import type { OverpassElement } from "./overpass";
+import { normalizeTee } from "./tee-selection";
 
 /** Turns a raw Overpass response into cacheable geometry. Pure: no network, no storage. */
 
@@ -53,6 +54,8 @@ export interface NormalizeInput {
   /** The player's fix, used to pick the nearest course when several are in range. */
   fix: LatLng;
   holes: ScorecardHole[];
+  /** The course's name as the scorecard has it. Picks the course out when several share a park. */
+  courseName?: string;
 }
 
 export interface NormalizeResult {
@@ -247,9 +250,19 @@ interface CourseCandidate {
 }
 
 function readCourseCandidates(elements: OverpassElement[]): CourseCandidate[] {
-  const candidates: CourseCandidate[] = [];
+  // A course can arrive twice, once with its centre and once with its outline, when the query
+  // asks for both. Folded into one, it keeps both.
+  const courses = new Map<string, OverpassElement>();
   for (const element of elements) {
     if (element.tags?.leisure !== "golf_course") continue;
+    const seen = courses.get(elementRef(element));
+    courses.set(elementRef(element), seen
+      ? { ...seen, ...element, center: element.center ?? seen.center, geometry: element.geometry?.length ? element.geometry : seen.geometry }
+      : element);
+  }
+
+  const candidates: CourseCandidate[] = [];
+  for (const element of courses.values()) {
     const outline = (element.geometry?.length ?? 0) >= 3 ? geometryOf(element) : null;
     const centre = element.center ? toLatLng(element.center) : outline ? polygonCentroid(outline) : null;
     if (!centre) continue;
@@ -286,14 +299,31 @@ function belongsToCourse(point: LatLng, chosen: CourseCandidate, all: CourseCand
   return nearest.element === chosen.element;
 }
 
+const GENERIC_NAME_WORDS = new Set(["the", "golf", "course", "club", "country", "links", "and", "at", "of"]);
+
+/** A course name reduced to the words that tell it apart: "Genesee Valley Golf Course — South" is "genesee valley south". */
+export function distinctiveCourseName(name: string): string {
+  return normalizeTee(name)
+    .split(" ")
+    .filter((word) => word && !GENERIC_NAME_WORDS.has(word))
+    .join(" ");
+}
+
 function readCourseIdentity(
   elements: OverpassElement[],
   fix: LatLng,
   holes: OsmHoleGeometry[],
+  courseName?: string,
 ): { id: string; name: string; centre: LatLng } {
   const courses = readCourseCandidates(elements);
+  // Two courses can share a park and a clubhouse, with holes of one nearer the other's centre.
+  // When the scorecard's name picks one out, the name settles it; otherwise the nearest wins.
+  const wanted = courseName ? distinctiveCourseName(courseName) : "";
+  const named = wanted
+    ? courses.filter((candidate) => distinctiveCourseName(candidate.element.tags?.name ?? "") === wanted)
+    : [];
   let best: { element: OverpassElement; centre: LatLng; distanceM: number } | null = null;
-  for (const candidate of courses) {
+  for (const candidate of named.length ? named : courses) {
     const distanceM = haversineM(candidate.centre, fix);
     if (!best || distanceM < best.distanceM) {
       best = { element: candidate.element, centre: candidate.centre, distanceM };
@@ -314,6 +344,13 @@ function readCourseIdentity(
     : `holes/${Math.round(fix.lat * 1e5)}-${Math.round(fix.lng * 1e5)}`;
   const centre = holes.length ? polygonCentroid(holes.map((hole) => hole.greenCentre)) : fix;
   return { id: fallbackId, name: "", centre };
+}
+
+/** A hole whose OSM tags agree with this scorecard's hole of the same number. */
+function matchesScorecard(hole: OsmHoleGeometry, card: ScorecardHole[]): boolean {
+  const entry = card.find((item) => String(item.number) === hole.ref);
+  if (!entry || hole.par !== entry.par) return false;
+  return hole.handicap === null || hole.handicap === entry.handicap;
 }
 
 const PAR_MATCH_BONUS = 40;
@@ -389,14 +426,23 @@ export function assignHoles(candidates: OsmHoleGeometry[], holes: ScorecardHole[
 export function normalizeOsmCourse(input: NormalizeInput): NormalizeResult {
   const greens = readGreens(input.elements);
   const allHoles = readHoleWays(input.elements, greens);
-  const identity = readCourseIdentity(input.elements, input.fix, allHoles);
+  const identity = readCourseIdentity(input.elements, input.fix, allHoles, input.courseName);
 
   // Drop anything belonging to a neighbouring course before numbering begins, so hole 1 is
   // this course's hole 1 and not the one next door that happens to share the number.
   const candidates = readCourseCandidates(input.elements);
   const chosen = candidates.find((candidate) => elementRef(candidate.element) === identity.id);
+  const namedByScorecard =
+    Boolean(input.courseName) &&
+    distinctiveCourseName(chosen?.element.tags?.name ?? "") === distinctiveCourseName(input.courseName ?? "");
   const holes = chosen
-    ? allHoles.filter((hole) => belongsToCourse(hole.greenCentre, chosen, candidates))
+    ? allHoles.filter((hole) =>
+        belongsToCourse(hole.greenCentre, chosen, candidates) ||
+        // Without an outline the nearest centre can hand one of this course's holes to the
+        // course next door. When the scorecard named this course, a hole tagged with this
+        // card's number, par and handicap stays in, and the assignment below chooses between it
+        // and any look-alike from next door by length and the walk from the previous green.
+        (namedByScorecard && !chosen.outline && matchesScorecard(hole, input.holes)))
     : allHoles;
 
   const hazards = readHazards(input.elements, holes).filter(

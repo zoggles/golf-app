@@ -41,9 +41,12 @@ export function courseAndHolesQuery(lat: number, lng: number): string {
   return [
     "[out:json][timeout:90];",
     `nwr["leisure"="golf_course"](around:2500,${fix})->.course;`,
-    // geom as well as center: the polygon is what separates this course's holes from a
-    // neighbour's when the two sit inside the same radius.
-    ".course out tags geom center;",
+    // Centre and outline as two outputs: asked for together in one, Overpass returns only the
+    // centre, so no course ever arrived with its outline. The outline is what separates this
+    // course's holes from a neighbour's when the two sit inside the same radius; the normaliser
+    // folds the two copies of each course back into one.
+    ".course out tags center;",
+    ".course out tags geom;",
     `way["golf"](around:1400,${fix})->.features;`,
     ".features out tags geom;",
   ].join("\n");

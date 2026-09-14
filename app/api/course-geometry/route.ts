@@ -23,6 +23,9 @@ const NEARBY_COURSE_RADIUS_M = 2500;
 /** Half the depth of a typical green, for a hole captured by hand rather than mapped. */
 const ASSUMED_GREEN_HALF_DEPTH_M = 9;
 
+/** The lookup came from somewhere with no golf course near it, so there is nothing to record. */
+class NotAtCourseError extends Error {}
+
 /**
  * Dedupes concurrent first-fetches of the same course within one warm instance. The real
  * protection against hammering Overpass is the two cache lookups that run before it.
@@ -93,9 +96,16 @@ async function fetchAndCache(
   holes: ScorecardHole[],
 ): Promise<CourseGeometryBundle> {
   const elements = await runOverpass(courseAndHolesQuery(fix.lat, fix.lng));
-  const normalized = normalizeOsmCourse({ elements, fix, holes });
+  // The key starts with the course's normalised name, which tells apart two courses that share
+  // a park, such as Genesee Valley's North and South.
+  const normalized = normalizeOsmCourse({ elements, fix, holes, courseName: courseKey.split("|")[0] });
 
   if (normalized.geometry.holes.length === 0) {
+    // With no golf course anywhere near the fix, the lookup was made from somewhere else, such
+    // as home while entering a round. Saving "no holes" then would hide the course for good.
+    if (!elements.some((element) => element.tags?.leisure === "golf_course")) {
+      throw new NotAtCourseError();
+    }
     const geometry = await saveCourseGeometryRow(emptyGeometry(courseKey, fix));
     await saveCourseGeometryLink({ courseKey, geometryId: geometry.id, holeMap: {}, matchedBy: "manual" });
     return { courseKey, geometry, holeMap: {}, matchedBy: "manual" };
@@ -122,7 +132,13 @@ export async function POST(request: Request) {
     const { courseKey, fix, holes } = parseGeometryResolve(await request.json());
 
     const cached = await readCourseGeometryBundle(courseKey);
-    if (cached) return bundleResponse(cached);
+    // An empty map saved from well away from here says nothing about this course. Only trust
+    // "no holes" when it was recorded from where the golfer is standing.
+    const emptyFromElsewhere =
+      cached !== null &&
+      cached.geometry.holes.length === 0 &&
+      haversineM(cached.geometry.centre, fix) > NEARBY_COURSE_RADIUS_M;
+    if (cached && !emptyFromElsewhere) return bundleResponse(cached);
 
     const nearby = await linkToNearbyCourse(courseKey, fix, holes);
     if (nearby) return bundleResponse(nearby);
@@ -135,6 +151,12 @@ export async function POST(request: Request) {
       inFlight.delete(courseKey);
     }
   } catch (cause) {
+    if (cause instanceof NotAtCourseError) {
+      return Response.json(
+        { error: "No mapped golf course near you yet. Caddy View will look again from the course.", retryable: true },
+        { status: 404 },
+      );
+    }
     if (cause instanceof OverpassUnavailableError) {
       return Response.json(
         {

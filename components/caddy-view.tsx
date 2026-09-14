@@ -17,7 +17,7 @@ import { useBag } from "@/hooks/use-bag";
 import { useCourseGeometry } from "@/hooks/use-course-geometry";
 import { usePlayerPosition } from "@/hooks/use-player-position";
 import { useCaddyViewPrefs } from "@/hooks/use-caddy-view-prefs";
-import { captureGreen, ensureCourseGeometry } from "@/lib/course-geometry-cache";
+import { captureGreen, ensureCourseGeometry, refreshCourseGeometry } from "@/lib/course-geometry-cache";
 import { courseKey } from "@/lib/course-key";
 import { metresToYards } from "@/lib/geo";
 import { playingHole, playingHoles } from "@/lib/hole-geometry";
@@ -61,9 +61,15 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
 
   const fix = position.state === "tracking" ? position.fix : null;
 
-  // One resolve per course. Everything after the first round is served from the cache.
+  // The map downloads as soon as Caddy View opens. That needs no position, only the course.
   useEffect(() => {
-    if (!fix || geometry.bundle) return;
+    void refreshCourseGeometry(key, course.holes.length);
+  }, [key, course.holes.length]);
+
+  // One resolve per course, plus a second look a session when the saved copy has gaps.
+  // Everything after the first round is served from the cache.
+  useEffect(() => {
+    if (!fix) return;
     void ensureCourseGeometry({
       courseKey: key,
       fix: { lat: fix.lat, lng: fix.lng },
@@ -74,7 +80,7 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
         handicap: item.handicap,
       })),
     });
-  }, [fix, geometry.bundle, key, course.holes]);
+  }, [fix, key, course.holes]);
 
   const holeGeometry = geometry.bundle ? playingHole(geometry.bundle, hole.number) : null;
   const plan =
