@@ -7,6 +7,7 @@ import { useGolfData } from "@/hooks/use-golf-data";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { buildHistoryCsv, historyExportFilename } from "@/lib/history-export";
 import { buildRoundInsights, estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound, trackedRoundMetrics, type RoundSummary } from "@/lib/metrics";
+import { handicapGoingInto } from "@/lib/personal-par";
 import { bestByFormat, describeFormatCounts, formatLabel, nineBarHeights, pacePerHole, roundNines, type RoundNines } from "@/lib/round-format";
 import type { GolfRound, RoundSegment } from "@/lib/types";
 
@@ -126,7 +127,8 @@ export function ProgressPage() {
             <div className="round-list">
               {summaries.map((round) => {
                 const savedRound = roundsById.get(round.id);
-                const roundHandicap = savedRound ? estimateRoundHandicap(handicap, savedRound.course, savedRound.segment) : null;
+                // The handicap carried into each round, matching what that round’s own page shows.
+                const roundHandicap = savedRound ? estimateRoundHandicap(handicapGoingInto(completed, savedRound), savedRound.course, savedRound.segment) : null;
                 const insights = insightsByRound.get(round.id) ?? [];
                 const facts = savedRound ? metricFacts(savedRound).slice(0, insights.length ? 0 : 2) : [];
                 return (

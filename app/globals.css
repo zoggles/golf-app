@@ -532,6 +532,34 @@ html[data-live-round] .page-shell { padding-top: 18px; }
   .hole-brief strong { font-size: 26px; }
 }
 
+/* A finished round as a paper card: par, your par, shots, and each hole against your par. */
+.personal-card { margin-bottom: 14px; padding: 18px 16px; }
+.personal-card-head h2 { margin: 0 0 6px; font-size: 18px; letter-spacing: -.02em; }
+.personal-card-head p { margin: 0 0 14px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.card-table-scroll { overflow-x: auto; margin-bottom: 14px; }
+.card-table { width: 100%; min-width: 280px; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+.card-table th, .card-table td { height: 30px; padding: 0; text-align: center; font-size: 13px; }
+.card-table thead th { color: var(--faint); font-size: 11px; font-weight: 700; border-bottom: 1px solid var(--line); }
+.card-table thead th:first-child, .card-table tbody th { width: 54px; padding-right: 4px; color: var(--muted); font-size: 11px; font-weight: 700; text-align: left; white-space: nowrap; }
+.card-table tbody tr + tr { border-top: 1px solid rgba(222,238,225,.06); }
+.card-table .card-total { width: 36px; border-left: 1px solid var(--line); font-weight: 800; }
+.card-row-par td { color: var(--muted); }
+.card-row-yours td { color: var(--ink); }
+.card-row-yours td.gets-stroke { background: rgba(173,240,95,.13); color: var(--green); font-weight: 800; }
+.card-row-shots td { font-weight: 800; }
+.card-table .score-mark { min-width: 22px; height: 22px; padding: 0 2px; font-size: 13px; }
+.card-table .score-mark.eagle, .card-table .score-mark.double { box-shadow: 0 0 0 1px var(--mark-gap), 0 0 0 2px var(--mark); }
+.card-row-vs td { font-size: 12px; font-weight: 700; }
+.card-table .under { color: var(--green); }
+.card-table .over { color: var(--danger); }
+.card-table .even { color: var(--muted); }
+.card-legend { display: flex; align-items: center; gap: 7px; margin: -4px 0 0; color: var(--muted); font-size: 11px; }
+.card-legend-swatch { width: 14px; height: 10px; border-radius: 3px; background: rgba(173,240,95,.3); }
+.round-detail-total .round-detail-personal { grid-column: 1 / -1; justify-self: end; margin-top: 6px; font-size: 12px; font-style: normal; font-weight: 700; }
+.round-detail-personal.under { color: var(--green); }
+.round-detail-personal.over { color: var(--danger); }
+.round-detail-personal.even { color: var(--muted); }
+
 /* Completed round.
    Score marks follow the paper-scorecard convention golfers already read without thinking:
    circle for birdie, double circle for eagle, square for bogey, double square for double,

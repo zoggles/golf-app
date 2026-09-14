@@ -9,6 +9,7 @@ import {
   Check,
   MapPin,
   Minus,
+  PencilSimple,
   Plus,
   Sparkle,
   Spinner,
@@ -19,10 +20,12 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import { FormatMark } from "@/components/format-mark";
+import { PersonalScorecard } from "@/components/personal-scorecard";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { useRoundSummary, type SummaryState } from "@/hooks/use-round-summary";
 import { getSegmentHoles } from "@/lib/courses";
-import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, trackedRoundMetrics } from "@/lib/metrics";
+import { estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, trackedRoundMetrics } from "@/lib/metrics";
+import { buildPersonalScorecard, describeVsYourPar, handicapGoingInto } from "@/lib/personal-par";
 import {
   buildRoundReport,
   buildSummaryInput,
@@ -53,7 +56,9 @@ export function RoundDetailPage({ roundId }: { roundId: string }) {
     );
   }
 
-  return <RoundEditor key={round.id} round={round} rounds={data.rounds} handicapIndex={estimateHandicap(data.rounds)} />;
+  // The handicap carried into this round, not today's, so an old round keeps the expectation
+  // it was actually played under.
+  return <RoundEditor key={round.id} round={round} rounds={data.rounds} handicapIndex={handicapGoingInto(data.rounds, round)} />;
 }
 
 function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; rounds: GolfRound[]; handicapIndex: number | null }) {
@@ -63,6 +68,8 @@ function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; round
   const [scores, setScores] = useState<Record<number, number>>(() => ({ ...round.scores }));
   const [playedOn, setPlayedOn] = useState(() => roundDateInputValue(round));
   const [saved, setSaved] = useState(false);
+  // Corrections are the rare case on an old round, so the editor stays out of the way until asked.
+  const [editing, setEditing] = useState(false);
   const scoresChanged = holes.some((hole) => scores[hole.number] !== round.scores[hole.number]);
   const dateChanged = playedOn !== roundDateInputValue(round);
   const isDirty = scoresChanged || dateChanged;
@@ -75,10 +82,13 @@ function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; round
   const tracked = trackedRoundMetrics(round);
   const hasTrackedStats = tracked.puttsHoles > 0 || tracked.penaltyHoles > 0 || tracked.fairwaysTracked > 0;
 
+  const card = useMemo(() => buildPersonalScorecard({ round, handicapIndex, scores }), [round, handicapIndex, scores]);
+  const personalTone = card.vsYourPar === null ? null : card.vsYourPar < 0 ? "under" : card.vsYourPar > 0 ? "over" : "even";
+
   // The card and the lists follow unsaved edits, so fixing a score shows its effect at once.
-  const report = useMemo(() => buildRoundReport(round, scores), [round, scores]);
+  const report = useMemo(() => buildRoundReport(round, scores, { handicapIndex }), [round, scores, handicapIndex]);
   // The summary is written about what is stored, never about an edit that may be discarded.
-  const savedReport = useMemo(() => buildRoundReport(round), [round]);
+  const savedReport = useMemo(() => buildRoundReport(round, round.scores, { handicapIndex }), [round, handicapIndex]);
   const previous = useMemo(() => previousCompletedRounds(rounds, round), [rounds, round]);
   const comparison = useMemo(
     () => compareToPrevious(savedReport, previous.map((item) => buildRoundReport(item))),
@@ -102,12 +112,25 @@ function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; round
     }));
   }
 
+  function startEditing() {
+    setSaved(false);
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setScores({ ...round.scores });
+    setPlayedOn(roundDateInputValue(round));
+    setSaved(false);
+    setEditing(false);
+  }
+
   function saveChanges() {
     updateCompletedRound(round.id, {
       scores: scoresChanged ? scores : undefined,
       playedOn: dateChanged ? playedOn : undefined,
     });
     setSaved(true);
+    setEditing(false);
   }
 
   function removeRound() {
@@ -127,8 +150,18 @@ function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; round
           <p><MapPin size={14} /> {course.location} · {round.tee} tees · Round HCP {roundHandicap ?? "—"}</p>
           <time dateTime={playedOn}>{shownDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</time>
         </div>
-        <div className="round-detail-total"><FormatMark segment={round.segment} holesPlayed={holes.length} /><small>TOTAL</small><strong>{total}</strong><span>{formatToPar(total - par)}</span></div>
+        <div className="round-detail-total">
+          <FormatMark segment={round.segment} holesPlayed={holes.length} />
+          <small>TOTAL</small>
+          <strong>{total}</strong>
+          <span>{formatToPar(total - par)}</span>
+          {card.vsYourPar !== null ? (
+            <em className={`round-detail-personal ${personalTone}`}>{describeVsYourPar(card.vsYourPar)}</em>
+          ) : null}
+        </div>
       </header>
+
+      <PersonalScorecard card={card} />
 
       <section className="score-mix surface-card" aria-label="Score breakdown">
         {SCORE_TYPES.map((type) => (
@@ -145,7 +178,7 @@ function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; round
           {report.wentWell.length ? (
             <ul>{report.wentWell.map((fact) => <li key={fact.key}>{fact.text}</li>)}</ul>
           ) : (
-            <p className="report-empty">Tough day. Tomorrow’s a fresh card.</p>
+            <p className="report-empty">No scores on the card yet.</p>
           )}
         </div>
         <div className="report-card bad surface-card">
@@ -167,59 +200,68 @@ function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; round
         </section>
       ) : null}
 
-      <section className="round-editor surface-card">
-        <div className="round-date-field">
-          <label htmlFor="round-played-on">Date played</label>
-          <input
-            id="round-played-on"
-            type="date"
-            value={playedOn}
-            max={dateInputValue(new Date())}
-            onChange={(event) => {
-              setSaved(false);
-              setPlayedOn(event.target.value);
-            }}
-          />
-        </div>
-        <p className="round-handicap-help">Hole HCP: 1 is hardest, 18 is easiest. “+1” is a stroke allocated from your Round HCP.</p>
-        <div className="round-editor-heading"><span>HOLE</span><span>PAR</span><span>HOLE HCP</span><span>YARDS</span><span>SCORE</span></div>
-        {holes.map((hole) => {
-          const metrics = metricsByHole[hole.number];
-          const strokes = scores[hole.number];
-          const mark = strokes != null ? scoreType(strokes, hole.par) : null;
-          const derivedBlowUp = strokes != null && strokes >= hole.par + 3;
-          return <div className="round-editor-row" key={hole.number}>
-            <strong>{hole.number}</strong>
-            <span>{hole.par}</span>
-            <span>{hole.handicap}{handicapStrokesForHole(roundHandicap, hole, holes) ? ` · +${handicapStrokesForHole(roundHandicap, hole, holes)}` : ""}</span>
-            <span>{hole.yards}</span>
-            <div className="inline-score-control">
-              <button type="button" onClick={() => changeScore(hole.number, -1)} aria-label={`Decrease hole ${hole.number} score`}><Minus size={16} /></button>
-              <strong
-                className={mark ? `score-mark ${mark}` : undefined}
-                aria-label={mark ? `${strokes}, ${SCORE_TYPE_NAMES[mark].single}` : "No score"}
-              >
-                {strokes ?? "—"}
-              </strong>
-              <button type="button" onClick={() => changeScore(hole.number, 1)} aria-label={`Increase hole ${hole.number} score`}><Plus size={16} /></button>
-            </div>
-            {metrics && Object.keys(metrics).length ? (
-              <div className="round-hole-details">
-                {metrics.fairway ? <small>Fairway {metrics.fairway}</small> : null}
-                {metrics.putts !== undefined ? <small>{metrics.putts} {metrics.putts === 1 ? "putt" : "putts"}</small> : null}
-                {metrics.penaltyStrokes !== undefined ? <small>{metrics.penaltyStrokes} {metrics.penaltyStrokes === 1 ? "penalty" : "penalties"}</small> : null}
-                {metrics.blowUp || derivedBlowUp ? <small>Blow-up</small> : null}
+      {editing ? (
+        <section className="round-editor surface-card">
+          <div className="round-date-field">
+            <label htmlFor="round-played-on">Date played</label>
+            <input
+              id="round-played-on"
+              type="date"
+              value={playedOn}
+              max={dateInputValue(new Date())}
+              onChange={(event) => {
+                setSaved(false);
+                setPlayedOn(event.target.value);
+              }}
+            />
+          </div>
+          <p className="round-handicap-help">Hole HCP: 1 is hardest, 18 is easiest. “+1” is a stroke allocated from your Round HCP.</p>
+          <div className="round-editor-heading"><span>HOLE</span><span>PAR</span><span>HOLE HCP</span><span>YARDS</span><span>SCORE</span></div>
+          {holes.map((hole) => {
+            const metrics = metricsByHole[hole.number];
+            const strokes = scores[hole.number];
+            const mark = strokes != null ? scoreType(strokes, hole.par) : null;
+            const derivedBlowUp = strokes != null && strokes >= hole.par + 3;
+            return <div className="round-editor-row" key={hole.number}>
+              <strong>{hole.number}</strong>
+              <span>{hole.par}</span>
+              <span>{hole.handicap}{handicapStrokesForHole(roundHandicap, hole, holes) ? ` · +${handicapStrokesForHole(roundHandicap, hole, holes)}` : ""}</span>
+              <span>{hole.yards}</span>
+              <div className="inline-score-control">
+                <button type="button" onClick={() => changeScore(hole.number, -1)} aria-label={`Decrease hole ${hole.number} score`}><Minus size={16} /></button>
+                <strong
+                  className={mark ? `score-mark ${mark}` : undefined}
+                  aria-label={mark ? `${strokes}, ${SCORE_TYPE_NAMES[mark].single}` : "No score"}
+                >
+                  {strokes ?? "—"}
+                </strong>
+                <button type="button" onClick={() => changeScore(hole.number, 1)} aria-label={`Increase hole ${hole.number} score`}><Plus size={16} /></button>
               </div>
-            ) : null}
-          </div>;
-        })}
-      </section>
+              {metrics && Object.keys(metrics).length ? (
+                <div className="round-hole-details">
+                  {metrics.fairway ? <small>Fairway {metrics.fairway}</small> : null}
+                  {metrics.putts !== undefined ? <small>{metrics.putts} {metrics.putts === 1 ? "putt" : "putts"}</small> : null}
+                  {metrics.penaltyStrokes !== undefined ? <small>{metrics.penaltyStrokes} {metrics.penaltyStrokes === 1 ? "penalty" : "penalties"}</small> : null}
+                  {metrics.blowUp || derivedBlowUp ? <small>Blow-up</small> : null}
+                </div>
+              ) : null}
+            </div>;
+          })}
+        </section>
+      ) : null}
 
       <div className="round-edit-actions">
         <button className="danger-button" type="button" onClick={removeRound}><Trash size={18} /> Delete round</button>
         <div>
           {saved ? <span className="saved-indicator"><Check size={16} /> Saved</span> : null}
-          <button className="primary-button" type="button" onClick={saveChanges} disabled={!isDirty}>Save changes</button>
+          {editing ? (
+            <>
+              <button className="secondary-button" type="button" onClick={cancelEditing}>Cancel</button>
+              <button className="primary-button" type="button" onClick={saveChanges} disabled={!isDirty}>Save changes</button>
+            </>
+          ) : (
+            <button className="secondary-button" type="button" onClick={startEditing}><PencilSimple size={17} /> Edit scores</button>
+          )}
         </div>
       </div>
 

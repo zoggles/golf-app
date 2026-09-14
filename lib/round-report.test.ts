@@ -322,3 +322,113 @@ describe("roundSummaryFingerprint", () => {
     expect(roundSummaryFingerprint(withMetrics(base, { 1: { putts: 2 } }), [])).not.toBe(roundSummaryFingerprint(base, []));
   });
 });
+
+describe("a rough day still has something good", () => {
+  it("names the best hole when no hole reached par", () => {
+    // The reported case: nothing at par, one bogey. That bogey was the best hole of the day.
+    const toPars = Array(18).fill(2);
+    toPars[6] = 1;
+    expect(texts(buildRoundReport(round("rough", toPars)).wentWell)).toContain("Best of the day: a bogey on hole 7");
+  });
+
+  it("never leaves the list empty once holes are scored", () => {
+    expect(buildRoundReport(round("uniform", Array(18).fill(3))).wentWell.length).toBeGreaterThan(0);
+    expect(buildRoundReport(round("nine", Array(9).fill(2), { segment: "front9" })).wentWell.length).toBeGreaterThan(0);
+  });
+
+  it("counts bogeys or better when pars were scarce", () => {
+    const toPars = [1, 1, 2, 1, 2, 1, 1, 2, 1, 0, 1, 2, 1, 1, 2, 1, 1, 2];
+    expect(texts(buildRoundReport(round("bogeys", toPars)).wentWell)).toContain("12 of 18 holes at bogey or better");
+  });
+
+  it("does not bother counting bogeys on a round full of pars", () => {
+    const toPars = [...ALL_PARS];
+    toPars[0] = 1;
+    expect(buildRoundReport(round("tidy", toPars)).wentWell.map((fact) => fact.key)).not.toContain("bogey-or-better");
+  });
+
+  it("does not name a best hole when a hole reached par", () => {
+    const toPars = Array(18).fill(2);
+    toPars[3] = 0;
+    expect(buildRoundReport(round("one-par", toPars)).wentWell.map((fact) => fact.key)).not.toContain("best-hole");
+  });
+});
+
+describe("judged against your own par", () => {
+  // This card is rated 70 with a 120 slope, so a 20 index gives 19 strokes: one on every hole
+  // and a second on the hardest. Bogey golf is then a stroke better than your par.
+  it("credits beating your handicap", () => {
+    const report = buildRoundReport(round("bogey-golf", Array(18).fill(1)), undefined, { handicapIndex: 20 });
+    expect(texts(report.wentWell)).toContain("Beat your handicap by 1 stroke");
+    expect(texts(report.wentWell)).toContain("18 of 18 holes at or under your par");
+  });
+
+  it("says nothing about your par without a handicap", () => {
+    const keys = buildRoundReport(round("bogey-golf", Array(18).fill(1))).wentWell.map((fact) => fact.key);
+    expect(keys).not.toContain("your-par");
+    expect(keys).not.toContain("beat-handicap");
+  });
+
+  it("does not credit beating a handicap that was not beaten", () => {
+    const keys = buildRoundReport(round("rough", Array(18).fill(3)), undefined, { handicapIndex: 5 }).wentWell.map((fact) => fact.key);
+    expect(keys).not.toContain("beat-handicap");
+  });
+});
+
+
+describe("a few good holes are named, not counted", () => {
+  it("names a lone par instead of calling it 1 of 18", () => {
+    const toPars = Array(18).fill(2);
+    toPars[3] = 0;
+    const facts = texts(buildRoundReport(round("one-par", toPars)).wentWell);
+    expect(facts).toContain("A par on hole 4");
+    expect(facts.some((text) => text.includes("of 18 holes at par or better"))).toBe(false);
+  });
+
+  it("names two pars together", () => {
+    const toPars = Array(18).fill(2);
+    toPars[3] = 0;
+    toPars[10] = 0;
+    expect(texts(buildRoundReport(round("two-pars", toPars)).wentWell)).toContain("Pars on holes 4 and 11");
+  });
+
+  it("counts once there are enough to count", () => {
+    const toPars = Array(18).fill(2);
+    toPars[3] = 0;
+    toPars[10] = 0;
+    toPars[14] = 0;
+    expect(texts(buildRoundReport(round("three-pars", toPars)).wentWell)).toContain("3 of 18 holes at par or better");
+  });
+
+  it("lets a birdie speak for itself", () => {
+    const toPars = Array(18).fill(2);
+    toPars[2] = -1;
+    const report = buildRoundReport(round("birdie-only", toPars));
+    expect(texts(report.wentWell)).toContain("A birdie on hole 3");
+    expect(report.wentWell.map((fact) => fact.key)).not.toContain("pars-or-better");
+  });
+
+  it("says the one good hole once, and what it meant for you", () => {
+    // The reported case: one bogey and the rest well over. A 20 index gives the hardest hole
+    // two strokes, so that bogey was a stroke better than your par.
+    const toPars = Array(18).fill(3);
+    toPars[0] = 1;
+    const report = buildRoundReport(round("one-bogey", toPars), undefined, { handicapIndex: 20 });
+    expect(texts(report.wentWell)).toEqual(["Best of the day: a bogey on hole 1, a stroke under your par"]);
+  });
+
+  it("says right on your par when the best hole matched it", () => {
+    const toPars = Array(18).fill(3);
+    toPars[6] = 1;
+    const report = buildRoundReport(round("one-bogey", toPars), undefined, { handicapIndex: 20 });
+    expect(texts(report.wentWell)).toContain("Best of the day: a bogey on hole 7, right on your par");
+  });
+
+  it("leaves the credit off when the best hole was still over your par", () => {
+    // A 5 index gives three strokes here, on holes 1 to 3. Hole 7 gets none.
+    const toPars = Array(18).fill(3);
+    toPars[6] = 1;
+    const report = buildRoundReport(round("one-bogey", toPars), undefined, { handicapIndex: 5 });
+    expect(texts(report.wentWell)).toContain("Best of the day: a bogey on hole 7");
+  });
+});

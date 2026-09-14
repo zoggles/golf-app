@@ -1,5 +1,5 @@
 import { getCourse, getSegmentHoles, segmentLabel } from "./courses";
-import { formatToPar, holeMetricsByNumber } from "./metrics";
+import { estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber } from "./metrics";
 import type { GolfRound, Hole, HoleMetrics } from "./types";
 
 /**
@@ -105,6 +105,9 @@ const numberOf = (item: ScoredHole) => item.hole.number;
 const percent = (rate: number) => `${Math.round(rate * 100)}%`;
 const sumToPar = (items: ScoredHole[]) => items.reduce((total, item) => total + item.toPar, 0);
 
+/** Below this many holes an "N of M holes" count reads as faint praise, so holes are named instead. */
+const COUNTABLE = 3;
+
 function holeList(numbers: number[]): string {
   if (numbers.length === 1) return `hole ${numbers[0]}`;
   if (numbers.length > 4) return `${numbers.length} holes`;
@@ -159,7 +162,16 @@ function byWeight(facts: ReportFact[]): ReportFact[] {
   return [...facts].sort((left, right) => right.weight - left.weight).slice(0, MAX_FACTS);
 }
 
-export function buildRoundReport(round: GolfRound, scores: Record<number, number> = round.scores): RoundReport {
+export interface RoundReportOptions {
+  /** The handicap carried into the round. When known, holes are also judged against your own par. */
+  handicapIndex?: number | null;
+}
+
+export function buildRoundReport(
+  round: GolfRound,
+  scores: Record<number, number> = round.scores,
+  options: RoundReportOptions = {},
+): RoundReport {
   const holes = scoredHoles(round, scores);
   const count = holes.length;
   const total = holes.reduce((sum, item) => sum + item.strokes, 0);
@@ -190,11 +202,15 @@ export function buildRoundReport(round: GolfRound, scores: Record<number, number
   if (count >= 9 && blowUps.length === 0) {
     wentWell.push({ key: "no-doubles", weight: 120, text: "Not a single double bogey all round" });
   }
-  if (parsOrBetter > 0) {
+  // Birdies and eagles already name their holes, so a lone par or two is named the same way.
+  const pars = holes.filter((item) => item.type === "par");
+  if (parsOrBetter >= COUNTABLE || pars.length) {
     wentWell.push({
       key: "pars-or-better",
       weight: 40 + (parsOrBetter / count) * 60,
-      text: `${parsOrBetter} of ${count} holes at par or better`,
+      text: parsOrBetter >= COUNTABLE
+        ? `${parsOrBetter} of ${count} holes at par or better`
+        : `${pars.length === 1 ? "A par" : "Pars"} on ${holeList(pars.map(numberOf))}`,
     });
   }
   const streak = longestRun(holes, (item) => item.toPar <= 0);
@@ -212,6 +228,67 @@ export function buildRoundReport(round: GolfRound, scores: Record<number, number
       weight: 50 + bounceBacks * 8,
       text: `Bounced back with par or better ${times(bounceBacks)} after a bogey or worse`,
     });
+  }
+
+  // Something good is almost always on the card, even on a rough day. It is judged against
+  // your own par where the handicap is known and otherwise against the rest of the round, so a
+  // high handicapper's list is never empty just because no hole reached par.
+  const bogeyOrBetter = holes.filter((item) => item.toPar <= 1).length;
+  if (count >= 9 && parsOrBetter * 2 < count && bogeyOrBetter > parsOrBetter && bogeyOrBetter >= COUNTABLE) {
+    wentWell.push({
+      key: "bogey-or-better",
+      weight: 35 + (bogeyOrBetter / count) * 30,
+      text: `${bogeyOrBetter} of ${count} holes at bogey or better`,
+    });
+  }
+  const course = round.course ?? getCourse(round.courseId);
+  const roundHandicap = estimateRoundHandicap(options.handicapIndex ?? null, course, round.segment);
+  const segmentHoles = getSegmentHoles(course, round.segment);
+  const vsYourPar = (item: ScoredHole) =>
+    roundHandicap === null ? null : item.toPar - handicapStrokesForHole(roundHandicap, item.hole, segmentHoles);
+
+  const bestToPar = holes.reduce((best, item) => Math.min(best, item.toPar), Infinity);
+  if (count > 0 && bestToPar >= 1) {
+    const bestHoles = holes.filter((item) => item.toPar === bestToPar);
+    const [one, many] = bestToPar === 1
+      ? ["a bogey", "bogeys"]
+      : bestToPar === 2
+        ? ["a double bogey", "double bogeys"]
+        : ["a triple or worse", "triples or worse"];
+    // A lone best hole also says how it went for you, which is often better than it sounds.
+    const yours = bestHoles.length === 1 ? vsYourPar(bestHoles[0]) : null;
+    const credit = yours === null || yours > 0
+      ? ""
+      : yours === 0
+        ? ", right on your par"
+        : `, ${yours === -1 ? "a stroke" : `${-yours} strokes`} under your par`;
+    wentWell.push({
+      key: "best-hole",
+      weight: 25,
+      text: bestHoles.length === count
+        ? `Steady all round: ${many} on every hole`
+        : `Best of the day: ${bestHoles.length === 1 ? one : many} on ${holeList(bestHoles.map(numberOf))}${credit}`,
+    });
+  }
+
+  if (roundHandicap !== null && count > 0) {
+    const againstYourPar = holes.map((item) => vsYourPar(item) ?? 0);
+    const atOrUnder = againstYourPar.filter((value) => value <= 0).length;
+    const overall = againstYourPar.reduce((total, value) => total + value, 0);
+    if (overall <= 0) {
+      wentWell.push({
+        key: "beat-handicap",
+        weight: 140,
+        text: overall < 0 ? `Beat your handicap by ${-overall} ${overall === -1 ? "stroke" : "strokes"}` : "Played right to your handicap",
+      });
+    }
+    if (atOrUnder >= COUNTABLE) {
+      wentWell.push({
+        key: "your-par",
+        weight: 45 + (atOrUnder / count) * 50,
+        text: `${atOrUnder} of ${count} holes at or under your par`,
+      });
+    }
   }
 
   if (blowUps.length) {
@@ -447,8 +524,12 @@ export function buildSummaryInput(round: GolfRound, report: RoundReport, compari
   };
 }
 
-/** Bump when the summary prompt or its input changes shape, so stored summaries refresh. */
-export const SUMMARY_VERSION = 1;
+/**
+ * Bump when the summary prompt or its input changes shape, so stored summaries refresh.
+ * 2: "went well" gained the best hole, bogeys or better, and results against your own par,
+ * so takes written while a rough round’s list was empty get a second look.
+ */
+export const SUMMARY_VERSION = 2;
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
