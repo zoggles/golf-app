@@ -5,8 +5,8 @@ A mobile-first, voice-friendly golf round tracker. Golfers, rounds, and course s
 ## Included
 
 - Sign in with Google; every round is private to that verified account
-- Start a front nine, back nine, or full round by voice or text
-- Research an unknown course on demand and turn its published scorecard into app data
+- Select a saved course, tee, and front nine, back nine, or full round; no course is selected by default
+- Prepare courses and their scorecards before heading out; look up additional tees when needed
 - Preloaded official white-tee scorecard for Genesee Valley Golf Course — South
 - Record until you tap stop, with pauses allowed while you think
 - Update current or past holes with general requests, including several corrections at once

@@ -22,8 +22,8 @@ import { apiUrl } from "@/lib/api-url";
 import { authHeaders } from "@/lib/auth-client";
 import { completeRound, discardActiveRound, firstUnscoredHole, forgetCourse, saveCourse, startRound, updateRoundHoleMetrics, updateRoundScore } from "@/lib/storage";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, summarizeRound } from "@/lib/metrics";
-import { nextHoleAfterVoiceUpdates, parseHoleMetricCommands, parseScoreCommands, parseStartCommand, type HoleMetricCommand, type ScoreCommand } from "@/lib/voice-parser";
-import { COMMON_TEES, courseListOptions, courseMatchesPhrase, extractTeeMention, normalizeTee, samePhysicalCourse, teeOptionLabel } from "@/lib/tee-selection";
+import { nextHoleAfterVoiceUpdates, parseHoleMetricCommands, parseScoreCommands, type HoleMetricCommand, type ScoreCommand } from "@/lib/voice-parser";
+import { COMMON_TEES, courseListOptions, normalizeTee, samePhysicalCourse, teeOptionLabel } from "@/lib/tee-selection";
 import type { Course, HoleMetrics, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { useCaddyViewPrefs } from "@/hooks/use-caddy-view-prefs";
@@ -81,14 +81,13 @@ function PlayMenu({ onNewRound, onPhoto }: { onNewRound: () => void; onPhoto: ()
 function RoundStarter() {
   const data = useGolfData();
   const [segment, setSegment] = useState<RoundSegment>("front9");
-  const [phrase, setPhrase] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [activity, setActivity] = useState<string | null>(null);
-  const [selectedCourse, setSelectedCourse] = useState<Course>(GENESEE_VALLEY_SOUTH);
-  const [teeChoice, setTeeChoice] = useState(GENESEE_VALLEY_SOUTH.tee);
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [teeChoice, setTeeChoice] = useState("");
   const [isLookingUp, setIsLookingUp] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
-  const [courseConfirmed, setCourseConfirmed] = useState(true);
+  const [courseConfirmed, setCourseConfirmed] = useState(false);
   const [confirmingForget, setConfirmingForget] = useState(false);
   const lookupAbortRef = useRef<AbortController | null>(null);
   const lookupSequenceRef = useRef(0);
@@ -104,9 +103,10 @@ function RoundStarter() {
     return [...byId.values()];
   }, [data.courses, data.rounds]);
   const savedCourseOptions = useMemo(() => courseListOptions(availableCourses), [availableCourses]);
-  const selectedCourseOption = savedCourseOptions.find((course) => samePhysicalCourse(course, selectedCourse)) ?? selectedCourse;
+  const selectedCourseOption = selectedCourse ? savedCourseOptions.find((course) => samePhysicalCourse(course, selectedCourse)) ?? selectedCourse : null;
 
   const teeOptions = useMemo(() => {
+    if (!selectedCourse) return [];
     const values = new Map<string, string>();
     for (const tee of [teeChoice, ...availableCourses.filter((course) => samePhysicalCourse(course, selectedCourse)).map((course) => course.tee), ...COMMON_TEES]) {
       values.set(normalizeTee(tee), tee);
@@ -115,6 +115,7 @@ function RoundStarter() {
   }, [availableCourses, selectedCourse, teeChoice]);
 
   async function researchCourse(query: string, status: string): Promise<Course | null> {
+    if (!selectedCourse) return null;
     const previousTee = selectedCourse.tee;
     lookupAbortRef.current?.abort();
     const controller = new AbortController();
@@ -188,32 +189,6 @@ function RoundStarter() {
     if (result) setMessage(`Verified the ${result.tee} tee scorecard and updated hole advice.`);
   }
 
-  async function handleVoice(text: string) {
-    const command = parseStartCommand(text);
-    setPhrase(text);
-    setSegment(command.segment);
-    setLookupError(null);
-    setMessage(null);
-    setActivity("Checking your saved courses…");
-    const requestedTee = extractTeeMention(text);
-    const savedCourse = savedCourseOptions.find((course) => courseMatchesPhrase(course, text));
-    if (command.courseId === GENESEE_VALLEY_SOUTH.id || savedCourse) {
-      const course = savedCourse ?? GENESEE_VALLEY_SOUTH;
-      if (requestedTee && normalizeTee(requestedTee) !== normalizeTee(course.tee)) {
-        await chooseTee(course, requestedTee);
-        return;
-      }
-      setSelectedCourse(course);
-      setTeeChoice(course.tee);
-      setMessage(`Found ${course.shortName}. ${segmentLabel(command.segment)} is ready.`);
-      setCourseConfirmed(true);
-      setActivity(null);
-      return;
-    }
-    const result = await researchCourse(text, "Searching published scorecards and verifying hole data…");
-    if (result) setMessage(`Verified ${result.shortName} from its published ${result.tee} tee scorecard.`);
-  }
-
   function chooseCourse(courseId: string) {
     const course = savedCourseOptions.find((item) => item.id === courseId);
     if (!course) return;
@@ -232,24 +207,27 @@ function RoundStarter() {
    * goes with it, since they are all the same mistake.
    */
   function forgetSelectedCourse() {
+    if (!selectedCourse) return;
+    cancelPendingLookup();
     const doomed = availableCourses.filter((course) => samePhysicalCourse(course, selectedCourse));
     for (const course of doomed) forgetCourse(course.id);
     setConfirmingForget(false);
-    setSelectedCourse(GENESEE_VALLEY_SOUTH);
-    setTeeChoice(GENESEE_VALLEY_SOUTH.tee);
-    setCourseConfirmed(true);
+    setSelectedCourse(null);
+    setTeeChoice("");
+    setCourseConfirmed(false);
     setLookupError(null);
-    setMessage(`Forgot ${selectedCourse.shortName}. Search again with the city and state.`);
+    setMessage(`Forgot ${selectedCourse.shortName}. Select another saved course.`);
   }
 
-  const playedHere = data.rounds.some((round) => samePhysicalCourse(round.course, selectedCourse));
-  const isSeedCourse = selectedCourse.id === GENESEE_VALLEY_SOUTH.id;
+  const playedHere = selectedCourse && data.rounds.some((round) => samePhysicalCourse(round.course, selectedCourse));
+  const isSeedCourse = selectedCourse?.id === GENESEE_VALLEY_SOUTH.id;
 
   function beginRound() {
-    startRound(selectedCourse, segment, phrase || undefined);
+    if (!selectedCourse || isLookingUp || !courseConfirmed) return;
+    startRound(selectedCourse, segment);
   }
 
-  const visibleHoles = getSegmentHoles(selectedCourse, segment);
+  const visibleHoles = selectedCourse ? getSegmentHoles(selectedCourse, segment) : [];
   const segmentPar = visibleHoles.reduce((total, hole) => total + hole.par, 0);
   const segmentYards = visibleHoles.reduce((total, hole) => total + hole.yards, 0);
 
@@ -257,7 +235,7 @@ function RoundStarter() {
     <>
       <section className="page-title">
         <h1>New round</h1>
-        <p>Search by course and location, or use the mic.</p>
+        <p>Choose one of your saved courses to start a round.</p>
       </section>
 
       <section className="setup-card surface-card">
@@ -267,72 +245,71 @@ function RoundStarter() {
             <h2>Course and round</h2>
           </div>
         </div>
-        <VoiceControl
-          onSubmit={handleVoice}
-          placeholder="Course, city, and round length"
-          example='Try “Front 9 at Genesee Valley South”'
-          activity={activity}
-        />
+        {activity ? <p role="status">{activity}</p> : null}
         {message ? <div className="success-note"><Check size={17} weight="bold" />{message}</div> : null}
         {lookupError ? <div className="voice-error">{lookupError}</div> : null}
         <div className="field-group">
           <label htmlFor="saved-course">Saved courses</label>
-          <select id="saved-course" className="course-select" value={selectedCourseOption.id} onChange={(event) => chooseCourse(event.target.value)} disabled={isLookingUp}>
+          <select id="saved-course" className="course-select" value={selectedCourseOption?.id ?? ""} onChange={(event) => chooseCourse(event.target.value)} disabled={isLookingUp}>
+            <option value="" disabled>Select a course</option>
             {savedCourseOptions.map((course) => (
               <option key={course.id} value={course.id}>{course.shortName}</option>
             ))}
           </select>
         </div>
-        <div className="field-group course-summary">
-          <label>Selected course</label>
-          <div className="course-choice selected">
-            <span className="course-icon"><FlagPennant size={21} weight="fill" /></span>
-            <span><strong>{selectedCourse.shortName}</strong><small><MapPin size={13} /> {selectedCourse.location}</small></span>
-            <Check className="choice-check" size={19} weight="bold" />
-          </div>
-          {isSeedCourse || playedHere ? null : confirmingForget ? (
-            <div className="course-forget confirming">
-              <p>Forget {selectedCourse.shortName} in {selectedCourse.location}?</p>
-              <div>
-                <button type="button" onClick={forgetSelectedCourse}>Forget it</button>
-                <button type="button" onClick={() => setConfirmingForget(false)}>Keep it</button>
-              </div>
+        <p className="field-help">Select a course from the saved list. Missing a course? Ask to have it and its scorecard added before you head out.</p>
+        {selectedCourse ? <>
+          <div className="field-group course-summary">
+            <label>Selected course</label>
+            <div className="course-choice selected">
+              <span className="course-icon"><FlagPennant size={21} weight="fill" /></span>
+              <span><strong>{selectedCourse.shortName}</strong><small><MapPin size={13} /> {selectedCourse.location}</small></span>
+              <Check className="choice-check" size={19} weight="bold" />
             </div>
-          ) : (
-            <button type="button" className="course-forget" onClick={() => setConfirmingForget(true)}>
-              <Trash size={13} /> Wrong course? Forget it and search again
-            </button>
-          )}
-        </div>
-        <div className="field-group">
-          <label htmlFor="tee-choice">Tee</label>
-          <select
-            id="tee-choice"
-            className="course-select"
-            value={teeChoice}
-            onChange={(event) => void chooseTee(selectedCourse, event.target.value)}
-            aria-busy={isLookingUp}
-          >
-            {teeOptions.map((tee) => <option key={tee} value={tee}>{teeOptionLabel(tee)}</option>)}
-          </select>
-          <small className="field-help">Quick guide only—course conventions vary. Changing tees refreshes every hole and club suggestion.</small>
-        </div>
-        <div className="field-group">
-          <label>Holes</label>
-          <div className="segment-control">
-            {(["front9", "back9", "full18"] as RoundSegment[]).filter((option) => selectedCourse.holes.length === 18 || option === "front9").map((option) => (
-              <button key={option} type="button" onClick={() => setSegment(option)} className={segment === option ? "selected" : ""}>
-                {segmentLabel(option)}
+            {isSeedCourse || playedHere ? null : confirmingForget ? (
+              <div className="course-forget confirming">
+                <p>Forget {selectedCourse.shortName} in {selectedCourse.location}?</p>
+                <div>
+                  <button type="button" onClick={forgetSelectedCourse}>Forget it</button>
+                  <button type="button" onClick={() => setConfirmingForget(false)}>Keep it</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="course-forget" onClick={() => setConfirmingForget(true)}>
+                <Trash size={13} /> Wrong course? Forget it
               </button>
-            ))}
+            )}
           </div>
-        </div>
-        <div className="course-facts">
-          <span><small>TEE</small>{selectedCourse.tee}</span>
-          <span><small>PAR</small>{segmentPar}</span>
-          <span><small>YARDS</small>{segmentYards.toLocaleString()}</span>
-        </div>
-        <button className="primary-button full-width" type="button" onClick={beginRound} disabled={isLookingUp || !courseConfirmed}>
+          <div className="field-group">
+            <label htmlFor="tee-choice">Tee</label>
+            <select
+              id="tee-choice"
+              className="course-select"
+              value={teeChoice}
+              onChange={(event) => void chooseTee(selectedCourse, event.target.value)}
+              aria-busy={isLookingUp}
+            >
+              {teeOptions.map((tee) => <option key={tee} value={tee}>{teeOptionLabel(tee)}</option>)}
+            </select>
+            <small className="field-help">Quick guide only—course conventions vary. Changing tees refreshes every hole and club suggestion.</small>
+          </div>
+          <div className="field-group">
+            <label>Holes</label>
+            <div className="segment-control">
+              {(["front9", "back9", "full18"] as RoundSegment[]).filter((option) => selectedCourse.holes.length === 18 || option === "front9").map((option) => (
+                <button key={option} type="button" onClick={() => setSegment(option)} className={segment === option ? "selected" : ""}>
+                  {segmentLabel(option)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="course-facts">
+            <span><small>TEE</small>{selectedCourse.tee}</span>
+            <span><small>PAR</small>{segmentPar}</span>
+            <span><small>YARDS</small>{segmentYards.toLocaleString()}</span>
+          </div>
+        </> : null}
+        <button className="primary-button full-width" type="button" onClick={beginRound} disabled={!selectedCourse || isLookingUp || !courseConfirmed}>
           Start {segmentLabel(segment)} <ArrowRight size={19} weight="bold" />
         </button>
       </section>
