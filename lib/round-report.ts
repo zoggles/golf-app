@@ -108,7 +108,7 @@ const sumToPar = (items: ScoredHole[]) => items.reduce((total, item) => total + 
 /** Below this many holes an "N of M holes" count reads as faint praise, so holes are named instead. */
 const COUNTABLE = 3;
 
-function holeList(numbers: number[]): string {
+export function holeList(numbers: number[]): string {
   if (numbers.length === 1) return `hole ${numbers[0]}`;
   if (numbers.length > 4) return `${numbers.length} holes`;
   return `holes ${numbers.slice(0, -1).join(", ")} and ${numbers[numbers.length - 1]}`;
@@ -163,7 +163,7 @@ function byWeight(facts: ReportFact[]): ReportFact[] {
 }
 
 export interface RoundReportOptions {
-  /** The handicap carried into the round. When known, holes are also judged against your own par. */
+  /** The handicap carried into the round. When known, holes are also judged against your handicap target. */
   handicapIndex?: number | null;
 }
 
@@ -231,7 +231,7 @@ export function buildRoundReport(
   }
 
   // Something good is almost always on the card, even on a rough day. It is judged against
-  // your own par where the handicap is known and otherwise against the rest of the round, so a
+  // your handicap target where the handicap is known and otherwise against the rest of the round, so a
   // high handicapper's list is never empty just because no hole reached par.
   const bogeyOrBetter = holes.filter((item) => item.toPar <= 1).length;
   if (count >= 9 && parsOrBetter * 2 < count && bogeyOrBetter > parsOrBetter && bogeyOrBetter >= COUNTABLE) {
@@ -244,7 +244,7 @@ export function buildRoundReport(
   const course = round.course ?? getCourse(round.courseId);
   const roundHandicap = estimateRoundHandicap(options.handicapIndex ?? null, course, round.segment);
   const segmentHoles = getSegmentHoles(course, round.segment);
-  const vsYourPar = (item: ScoredHole) =>
+  const vsTarget = (item: ScoredHole) =>
     roundHandicap === null ? null : item.toPar - handicapStrokesForHole(roundHandicap, item.hole, segmentHoles);
 
   const bestToPar = holes.reduce((best, item) => Math.min(best, item.toPar), Infinity);
@@ -255,13 +255,14 @@ export function buildRoundReport(
       : bestToPar === 2
         ? ["a double bogey", "double bogeys"]
         : ["a triple or worse", "triples or worse"];
-    // A lone best hole also says how it went for you, which is often better than it sounds.
-    const yours = bestHoles.length === 1 ? vsYourPar(bestHoles[0]) : null;
+    // A lone best hole also says how it went against your handicap target, which is often
+    // better than it sounds.
+    const yours = bestHoles.length === 1 ? vsTarget(bestHoles[0]) : null;
     const credit = yours === null || yours > 0
       ? ""
       : yours === 0
-        ? ", right on your par"
-        : `, ${yours === -1 ? "a stroke" : `${-yours} strokes`} under your par`;
+        ? ", right on your handicap target"
+        : `, ${yours === -1 ? "a stroke" : `${-yours} strokes`} under your handicap target`;
     wentWell.push({
       key: "best-hole",
       weight: 25,
@@ -272,9 +273,9 @@ export function buildRoundReport(
   }
 
   if (roundHandicap !== null && count > 0) {
-    const againstYourPar = holes.map((item) => vsYourPar(item) ?? 0);
-    const atOrUnder = againstYourPar.filter((value) => value <= 0).length;
-    const overall = againstYourPar.reduce((total, value) => total + value, 0);
+    const againstTarget = holes.map((item) => vsTarget(item) ?? 0);
+    const atOrUnder = againstTarget.filter((value) => value <= 0).length;
+    const overall = againstTarget.reduce((total, value) => total + value, 0);
     if (overall <= 0) {
       wentWell.push({
         key: "beat-handicap",
@@ -284,9 +285,9 @@ export function buildRoundReport(
     }
     if (atOrUnder >= COUNTABLE) {
       wentWell.push({
-        key: "your-par",
+        key: "handicap-target",
         weight: 45 + (atOrUnder / count) * 50,
-        text: `${atOrUnder} of ${count} holes at or under your par`,
+        text: `${atOrUnder} of ${count} holes at or under your handicap target`,
       });
     }
   }
@@ -495,6 +496,17 @@ export function describeDelta(delta: MetricDelta): string {
   return `${delta.label}: ${describeRate(delta.key, delta.current)} now vs ${describeRate(delta.key, delta.previous)} before`;
 }
 
+/** How the round went against the golfer's own history, from ./round-story. */
+export interface PersonalSummaryInput {
+  comparison: string;
+  handicap: string | null;
+  ranks: string[];
+  trend: string | null;
+  holesBetter: string[];
+  holesWorse: string[];
+  biggestOpportunity: string | null;
+}
+
 export interface SummaryInput {
   course: string;
   segment: string;
@@ -504,10 +516,16 @@ export interface SummaryInput {
   wentWell: string[];
   costYou: string[];
   history: { previousRounds: number; improving: string[]; slipping: string[] };
+  personal?: PersonalSummaryInput;
 }
 
 /** Everything the summary model is allowed to know, and nothing it could embellish. */
-export function buildSummaryInput(round: GolfRound, report: RoundReport, comparison: RoundComparison): SummaryInput {
+export function buildSummaryInput(
+  round: GolfRound,
+  report: RoundReport,
+  comparison: RoundComparison,
+  personal?: PersonalSummaryInput,
+): SummaryInput {
   return {
     course: round.courseName,
     segment: segmentLabel(round.segment),
@@ -521,6 +539,7 @@ export function buildSummaryInput(round: GolfRound, report: RoundReport, compari
       improving: comparison.improving.map(describeDelta),
       slipping: comparison.slipping.map(describeDelta),
     },
+    ...(personal ? { personal } : {}),
   };
 }
 
@@ -528,8 +547,10 @@ export function buildSummaryInput(round: GolfRound, report: RoundReport, compari
  * Bump when the summary prompt or its input changes shape, so stored summaries refresh.
  * 2: "went well" gained the best hole, bogeys or better, and results against your own par,
  * so takes written while a rough round’s list was empty get a second look.
+ * 3: the take is also handed the golfer's own baseline, and the handicap-adjusted score is
+ * called the handicap target rather than "your par".
  */
-export const SUMMARY_VERSION = 2;
+export const SUMMARY_VERSION = 3;
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -552,7 +573,7 @@ function canonicalScores(scores: Record<number, number>): Array<[number, number]
  * stat, or any of the rounds it was compared against changes this, and the summary is
  * written again rather than quoting numbers that are no longer true.
  */
-export function roundSummaryFingerprint(round: GolfRound, previous: GolfRound[]): string {
+export function roundSummaryFingerprint(round: GolfRound, previous: GolfRound[], personal?: PersonalSummaryInput): string {
   const metrics = holeMetricsByNumber(round);
   return fnv1a(JSON.stringify({
     version: SUMMARY_VERSION,
@@ -564,5 +585,7 @@ export function roundSummaryFingerprint(round: GolfRound, previous: GolfRound[])
       .sort((left, right) => left - right)
       .map((hole) => [hole, metrics[hole].putts ?? null, metrics[hole].penaltyStrokes ?? null, metrics[hole].fairway ?? null, metrics[hole].blowUp ?? null]),
     previous: previous.map((item) => [item.id, canonicalScores(item.scores)]),
+    // The baseline reaches further back than `previous`, so what it said is part of the identity.
+    personal: personal ?? null,
   }));
 }

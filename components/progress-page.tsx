@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { ArrowRight, CaretRight, FileArrowDown, FlagPennant, Gauge, TrendUp } from "@phosphor-icons/react";
 import { FormatMark } from "@/components/format-mark";
+import { PersonalProgressSection } from "@/components/personal-progress-section";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { buildHistoryCsv, historyExportFilename } from "@/lib/history-export";
 import { buildRoundInsights, estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound, trackedRoundMetrics, type RoundSummary } from "@/lib/metrics";
-import { handicapGoingInto } from "@/lib/personal-par";
+import { buildRoundBaselines, historyBefore } from "@/lib/personal-baseline";
 import { bestByFormat, describeFormatCounts, formatLabel, nineBarHeights, pacePerHole, roundNines, type RoundNines } from "@/lib/round-format";
+import { handicapGoingInto } from "@/lib/round-scorecard";
+import { personalHeadline } from "@/lib/round-story";
 import type { GolfRound, RoundSegment } from "@/lib/types";
 
 const shortDate = (date: string) => new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -122,6 +125,8 @@ export function ProgressPage() {
             <p className="trend-footnote">Each half is one nine: on an 18, left is the front and right is the back. Labels are what you shot.</p>
           </section>
 
+          <PersonalProgressSection rounds={completed} />
+
           <section className="history-section">
             <div className="section-heading"><div><h2>Round log</h2><p>Strengths and focus areas use only the stats you tracked, compared with your own rounds.</p></div></div>
             <div className="round-list">
@@ -131,6 +136,10 @@ export function ProgressPage() {
                 const roundHandicap = savedRound ? estimateRoundHandicap(handicapGoingInto(completed, savedRound), savedRound.course, savedRound.segment) : null;
                 const insights = insightsByRound.get(round.id) ?? [];
                 const facts = savedRound ? metricFacts(savedRound).slice(0, insights.length ? 0 : 2) : [];
+                // The same "vs you" the round's own page leads with, measured against the rounds before it.
+                const vsYou = savedRound
+                  ? personalHeadline(buildRoundBaselines(historyBefore(completed, savedRound), savedRound), savedRound.course.shortName)
+                  : null;
                 return (
                   <Link key={round.id} href={`/rounds/${round.id}`} className="round-list-item" aria-label={`Open ${round.courseName} round from ${new Date(round.date).toLocaleDateString()}`}>
                     <span className="round-date"><strong>{new Date(round.date).getDate()}</strong><small>{new Date(round.date).toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</small></span>
@@ -147,6 +156,7 @@ export function ProgressPage() {
                     <span className="round-score">
                       <FormatMark segment={segmentOf(round.id)} holesPlayed={round.holesPlayed} />
                       <span className="round-score-line"><strong>{round.total}</strong><small>{formatToPar(round.toPar)}</small></span>
+                      {vsYou?.value ? <small className={`round-vs-you ${vsYou.tone ?? ""}`} title={vsYou.title}>{vsYou.value} vs avg</small> : null}
                     </span>
                     <CaretRight className="round-open-icon" size={18} />
                   </Link>

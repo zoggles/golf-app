@@ -60,11 +60,29 @@ const WITH_HISTORY: SummaryInput = {
     ],
     slipping: ["Penalty strokes: 0.11 now vs 0.00 before"],
   },
+  personal: {
+    comparison: "4.2 strokes better than your Arrowhead average. Average 82.2 over your last 3 rounds here · Best 79",
+    handicap: "5 strokes under your handicap target (target 83)",
+    ranks: ["Your best round at Arrowhead yet (4 played)"],
+    trend: "Trending better: about 6 strokes lower across your last four 18-hole rounds.",
+    holesBetter: ["Hole 7: 2 today vs your avg 3.8 (-1.8 vs you)"],
+    holesWorse: ["Hole 12: 8 today vs your avg 5.4 (+2.6 vs you)"],
+    biggestOpportunity: "Keep the ball in play. 2 penalty strokes on hole 12.",
+  },
 };
 
 const FIRST_ROUND: SummaryInput = {
   ...WITH_HISTORY,
   history: { previousRounds: 0, improving: [], slipping: [] },
+  personal: {
+    comparison: "Building your baseline. This round starts your baseline. 3 finished rounds unlock your average.",
+    handicap: null,
+    ranks: [],
+    trend: null,
+    holesBetter: [],
+    holesWorse: [],
+    biggestOpportunity: "Keep the ball in play. 2 penalty strokes on hole 12.",
+  },
 };
 
 describe.skipIf(!process.env.CADDY_E2E)("round summary, live model", () => {

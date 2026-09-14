@@ -13,19 +13,30 @@ import {
   Plus,
   Sparkle,
   Spinner,
-  ThumbsUp,
   Trash,
   TrendDown,
   TrendUp,
   WarningCircle,
 } from "@phosphor-icons/react";
 import { FormatMark } from "@/components/format-mark";
-import { PersonalScorecard } from "@/components/personal-scorecard";
+import { HoleCallouts } from "@/components/hole-callouts";
+import { OpportunityCard } from "@/components/opportunity-card";
+import { PersonalProgress } from "@/components/personal-progress";
+import { RoundLenses } from "@/components/round-lenses";
+import { RoundScorecard } from "@/components/round-scorecard";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { useRoundSummary, type SummaryState } from "@/hooks/use-round-summary";
 import { getSegmentHoles } from "@/lib/courses";
 import { estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, trackedRoundMetrics } from "@/lib/metrics";
-import { buildPersonalScorecard, describeVsYourPar, handicapGoingInto } from "@/lib/personal-par";
+import {
+  buildHoleHistory,
+  buildRoundBaselines,
+  describeTrend,
+  historyBefore,
+  playedLater,
+  rankRound,
+  scoringTrend,
+} from "@/lib/personal-baseline";
 import {
   buildRoundReport,
   buildSummaryInput,
@@ -33,9 +44,17 @@ import {
   previousCompletedRounds,
   roundSummaryFingerprint,
   SCORE_TYPE_NAMES,
-  SCORE_TYPES,
   scoreType,
 } from "@/lib/round-report";
+import { buildRoundScorecard, handicapGoingInto } from "@/lib/round-scorecard";
+import {
+  buildPersonalSummary,
+  describeRank,
+  holeCallouts,
+  personalHeadline,
+  scoringOpportunities,
+  worstHole,
+} from "@/lib/round-story";
 import { dateInputValue, parseDateInput, roundDateInputValue } from "@/lib/round-date";
 import { deleteRound, updateCompletedRound } from "@/lib/storage";
 import type { GolfRound } from "@/lib/types";
@@ -56,8 +75,8 @@ export function RoundDetailPage({ roundId }: { roundId: string }) {
     );
   }
 
-  // The handicap carried into this round, not today's, so an old round keeps the expectation
-  // it was actually played under.
+  // The handicap carried into this round, not today's, so an old round keeps the target it was
+  // actually played under.
   return <RoundEditor key={round.id} round={round} rounds={data.rounds} handicapIndex={handicapGoingInto(data.rounds, round)} />;
 }
 
@@ -82,20 +101,49 @@ function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; round
   const tracked = trackedRoundMetrics(round);
   const hasTrackedStats = tracked.puttsHoles > 0 || tracked.penaltyHoles > 0 || tracked.fairwaysTracked > 0;
 
-  const card = useMemo(() => buildPersonalScorecard({ round, handicapIndex, scores }), [round, handicapIndex, scores]);
-  const personalTone = card.vsYourPar === null ? null : card.vsYourPar < 0 ? "under" : card.vsYourPar > 0 ? "over" : "even";
+  // Your baseline only ever looks at completed rounds finished before this one.
+  const history = useMemo(() => historyBefore(rounds, round), [rounds, round]);
+  const holeHistory = useMemo(() => buildHoleHistory(history, round), [history, round]);
 
-  // The card and the lists follow unsaved edits, so fixing a score shows its effect at once.
+  // The card and the story follow unsaved edits, so fixing a score shows its effect at once.
+  const card = useMemo(
+    () => buildRoundScorecard({ round, handicapIndex, scores, history: holeHistory }),
+    [round, handicapIndex, scores, holeHistory],
+  );
+  const baselines = useMemo(() => buildRoundBaselines(history, round, scores), [history, round, scores]);
+  const headline = personalHeadline(baselines, course.shortName);
+  const roundLength = baselines.result?.holes ?? (holes.length >= 18 ? 18 : 9);
+  const trend = useMemo(() => scoringTrend(rounds, { holes: roundLength, through: round }), [rounds, round, roundLength]);
+  const ranks = rankRound(history, round, scores);
+  const later = playedLater(rounds, round);
+  const rankLines = [
+    ranks.course ? describeRank(ranks.course, "course", { courseName: course.shortName, holes: roundLength, later }) : null,
+    ranks.format ? describeRank(ranks.format, "format", { courseName: course.shortName, holes: roundLength, later }) : null,
+  ].filter((line): line is string => line !== null);
+
   const report = useMemo(() => buildRoundReport(round, scores, { handicapIndex }), [round, scores, handicapIndex]);
-  // The summary is written about what is stored, never about an edit that may be discarded.
+  const callouts = holeCallouts(card);
+  const opportunity = scoringOpportunities(report)[0] ?? null;
+  const worst = worstHole(card);
+
+  // The summary is written about what is stored, never about an edit that may be discarded. It
+  // is only requested while nothing is being edited, when the story above matches what is saved.
   const savedReport = useMemo(() => buildRoundReport(round, round.scores, { handicapIndex }), [round, handicapIndex]);
   const previous = useMemo(() => previousCompletedRounds(rounds, round), [rounds, round]);
   const comparison = useMemo(
     () => compareToPrevious(savedReport, previous.map((item) => buildRoundReport(item))),
     [savedReport, previous],
   );
-  const fingerprint = useMemo(() => roundSummaryFingerprint(round, previous), [round, previous]);
-  const summaryInput = useMemo(() => buildSummaryInput(round, savedReport, comparison), [round, savedReport, comparison]);
+  const personalSummary = buildPersonalSummary({
+    headline,
+    card,
+    callouts,
+    opportunity,
+    ranks: rankLines,
+    trend: trend.direction ? describeTrend(trend) : null,
+  });
+  const fingerprint = roundSummaryFingerprint(round, previous, personalSummary);
+  const summaryInput = buildSummaryInput(round, savedReport, comparison, personalSummary);
   const canSummarize = savedReport.holesScored >= SUMMARY_MIN_HOLES;
   const summary = useRoundSummary({
     roundId: round.id,
@@ -147,49 +195,26 @@ function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; round
         <div>
           <p className="eyebrow">COMPLETED ROUND</p>
           <h1>{course.shortName}</h1>
-          <p><MapPin size={14} /> {course.location} · {round.tee} tees · Round HCP {roundHandicap ?? "—"}</p>
+          <p><MapPin size={14} /> {course.location} · {round.tee} tees</p>
           <time dateTime={playedOn}>{shownDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</time>
         </div>
         <div className="round-detail-total">
           <FormatMark segment={round.segment} holesPlayed={holes.length} />
           <small>TOTAL</small>
           <strong>{total}</strong>
-          <span>{formatToPar(total - par)}</span>
-          {card.vsYourPar !== null ? (
-            <em className={`round-detail-personal ${personalTone}`}>{describeVsYourPar(card.vsYourPar)}</em>
-          ) : null}
+          <span>{formatToPar(total - par)} <em>vs par</em></span>
         </div>
       </header>
 
-      <PersonalScorecard card={card} />
+      <RoundLenses card={card} headline={headline} />
 
-      <section className="score-mix surface-card" aria-label="Score breakdown">
-        {SCORE_TYPES.map((type) => (
-          <div key={type} className={report.mix[type] ? "score-mix-item" : "score-mix-item empty"}>
-            <span className={`score-mark ${type}`}>{report.mix[type]}</span>
-            <small>{SCORE_TYPE_NAMES[type].plural}</small>
-          </div>
-        ))}
-      </section>
+      <PersonalProgress baselines={baselines} ranks={rankLines} trend={trend} courseName={course.shortName} />
 
-      <section className="round-report" aria-label="What went well and what cost you">
-        <div className="report-card good surface-card">
-          <h2><ThumbsUp size={17} weight="fill" /> Went well</h2>
-          {report.wentWell.length ? (
-            <ul>{report.wentWell.map((fact) => <li key={fact.key}>{fact.text}</li>)}</ul>
-          ) : (
-            <p className="report-empty">No scores on the card yet.</p>
-          )}
-        </div>
-        <div className="report-card bad surface-card">
-          <h2><TrendDown size={17} weight="bold" /> Cost you</h2>
-          {report.costYou.length ? (
-            <ul>{report.costYou.map((fact) => <li key={fact.key}>{fact.text}</li>)}</ul>
-          ) : (
-            <p className="report-empty">Nothing expensive out there. Suspiciously tidy.</p>
-          )}
-        </div>
-      </section>
+      <HoleCallouts callouts={callouts} wentWell={report.wentWell} costYou={report.costYou} scored={report.holesScored > 0} />
+
+      <OpportunityCard report={report} opportunity={opportunity} worst={worst} />
+
+      <RoundScorecard card={card} metricsByHole={metricsByHole} />
 
       {hasTrackedStats ? (
         <section className="round-tracked-summary surface-card" aria-label="Tracked on-course stats">

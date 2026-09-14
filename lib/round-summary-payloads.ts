@@ -23,6 +23,18 @@ export const summaryInputSchema = z.object({
     improving: z.array(line(160)).max(10),
     slipping: z.array(line(160)).max(10),
   }),
+  // Optional so an app build from before the baseline existed can still ask for a take.
+  personal: z
+    .object({
+      comparison: line(260),
+      handicap: line(160).nullable(),
+      ranks: z.array(line(160)).max(4),
+      trend: line(200).nullable(),
+      holesBetter: z.array(line(200)).max(5),
+      holesWorse: z.array(line(200)).max(5),
+      biggestOpportunity: line(320).nullable(),
+    })
+    .optional(),
 });
 
 export const roundSummaryRequestSchema = z.object({
