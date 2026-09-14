@@ -195,21 +195,26 @@ a { color: inherit; text-decoration: none; }
 .handicap-copy { display: flex; gap: 14px; padding-left: 28px; border-left: 1px solid var(--line); color: var(--green); }
 .handicap-copy p { margin: 0; color: var(--muted); line-height: 1.5; }
 .handicap-copy p strong { color: var(--ink); display: block; }
-.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 14px 0; }
+.metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
 .metric-card { min-width: 0; border: 1px solid var(--line); border-radius: 18px; padding: 18px; background: rgba(15,28,19,.72); display: flex; flex-direction: column; }
 .metric-card > span { color: var(--green); margin-bottom: 18px; }
 .metric-card small { color: var(--muted); }
 .metric-card strong { font-size: 31px; letter-spacing: -.05em; margin: 3px 0; }
-.metric-card p { margin: 0; color: var(--faint); font-size: 10px; }
+.metric-card p { margin: 0; overflow: hidden; color: var(--faint); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .trend-card { margin-top: 14px; padding: 24px; }
 .trend-bars { min-height: 205px; display: flex; align-items: stretch; justify-content: space-around; gap: 12px; overflow-x: auto; padding-bottom: 3px; }
 .trend-column { min-width: 74px; flex: 1; display: grid; grid-template-rows: 20px 108px auto; align-items: end; justify-items: center; gap: 7px; border-radius: 10px; }
 .trend-column:hover, .trend-column:focus-visible { background: rgba(173,240,95,.045); outline: none; }
 .trend-score { color: var(--green); font-size: 11px; font-weight: 700; }
-.trend-bar { width: min(42px, 65%); background: linear-gradient(180deg, var(--green), rgba(173,240,95,.2)); border-radius: 6px 6px 0 0; }
+.trend-track { display: flex; align-items: flex-end; gap: 2px; }
+.trend-half { display: block; width: 17px; border-radius: 5px 5px 0 0; }
+.trend-half.on { background: linear-gradient(180deg, var(--green), rgba(173,240,95,.25)); }
+/* The half of an eighteen a nine did not play, outlined so half a bar reads as half a round. */
+.trend-half.ghost { box-sizing: border-box; border: 1px dashed rgba(173,240,95,.32); border-bottom: 0; }
+.trend-footnote { margin: 12px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
 .trend-round-meta { align-self: stretch; width: 100%; border-top: 1px solid var(--line); padding: 9px 3px 0; text-align: center; }
 .trend-round-meta strong { display: -webkit-box; overflow: hidden; color: var(--ink); font-size: 10px; font-weight: 650; line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.trend-round-meta small { display: block; margin-top: 4px; color: var(--faint); font-size: 8px; white-space: nowrap; }
+.trend-round-meta small { display: flex; justify-content: center; align-items: center; gap: 4px; margin-top: 5px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .history-section { margin-top: 45px; }
 .history-section .section-heading p { max-width: 560px; margin: 7px 0 0; color: var(--faint); font-size: 11px; line-height: 1.45; }
 .round-list { border-top: 1px solid var(--line); }
@@ -225,10 +230,17 @@ a { color: inherit; text-decoration: none; }
 .round-insights .round-insight { width: fit-content; padding: 4px 7px; border-radius: 999px; color: var(--sand); background: rgba(219,209,184,.08); }
 .round-insights .round-insight.strength { color: var(--green); background: rgba(173,240,95,.09); }
 .round-insights .round-insight.focus { color: var(--danger); background: rgba(242,156,135,.09); }
-.round-score { text-align: right; }
+.round-score { align-items: flex-end; gap: 5px; text-align: right; }
+.round-score-line { display: flex; align-items: baseline; gap: 6px; }
 .round-score strong { font-size: 24px; }
 .round-score small { color: var(--green); }
 .round-open-icon { color: var(--faint); }
+/* Nine or eighteen, read at the same glance as the score. Two halves of an eighteen: a front
+   nine lights the left, a back nine the right, a full round both. */
+.format-mark { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 11px; font-weight: 700; letter-spacing: .02em; line-height: 1; white-space: nowrap; }
+.format-pill { display: inline-flex; gap: 2px; }
+.format-pill > span { width: 10px; height: 8px; border: 1px solid rgba(173,240,95,.55); border-radius: 2px; }
+.format-pill > span.on { border-color: var(--green); background: var(--green); }
 .metric-disclaimer { color: var(--faint); font-size: 11px; text-align: center; margin-top: 30px; }
 .back-link { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; margin-bottom: 30px; }
 .back-link:hover { color: var(--ink); }
@@ -239,7 +251,8 @@ a { color: inherit; text-decoration: none; }
 .round-detail-total { display: grid; grid-template-columns: auto auto; gap: 0 10px; align-items: end; text-align: right; }
 .round-detail-total small { grid-column: 1 / -1; color: var(--faint); font-size: 9px; letter-spacing: .14em; }
 .round-detail-total strong { font-size: 42px; line-height: 1; }
-.round-detail-total span { color: var(--green); font-size: 18px; padding-bottom: 3px; }
+.round-detail-total > span:not(.format-mark) { color: var(--green); font-size: 18px; padding-bottom: 3px; }
+.round-detail-total .format-mark { grid-column: 1 / -1; justify-self: end; margin-bottom: 6px; }
 .round-editor { overflow: hidden; }
 .round-tracked-summary { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: 14px; padding: 20px; }
 .round-tracked-summary > div { display: flex; flex-direction: column; text-align: center; border-right: 1px solid var(--line); }
@@ -593,6 +606,7 @@ html[data-live-round] .page-shell { padding-top: 18px; }
   .hole-cell:nth-child(5n) { border-right: 0; }
   .hole-cell:nth-child(n+6) { border-bottom: 0; }
   .metric-grid { grid-template-columns: 1fr 1fr; }
+  .metric-grid .metric-card:last-child { grid-column: 1 / -1; }
   .handicap-card { grid-template-columns: 1fr; }
   .handicap-copy { border-left: 0; border-top: 1px solid var(--line); padding: 20px 0 0; }
   .round-editor-heading, .round-editor-row { grid-template-columns: 36px 34px 54px 1fr 110px; padding: 10px 12px; gap: 8px; }

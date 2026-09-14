@@ -18,9 +18,10 @@ import {
   TrendUp,
   WarningCircle,
 } from "@phosphor-icons/react";
+import { FormatMark } from "@/components/format-mark";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { useRoundSummary, type SummaryState } from "@/hooks/use-round-summary";
-import { getSegmentHoles, segmentLabel } from "@/lib/courses";
+import { getSegmentHoles } from "@/lib/courses";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, trackedRoundMetrics } from "@/lib/metrics";
 import {
   buildRoundReport,
@@ -123,10 +124,10 @@ function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; round
         <div>
           <p className="eyebrow">COMPLETED ROUND</p>
           <h1>{course.shortName}</h1>
-          <p><MapPin size={14} /> {course.location} · {segmentLabel(round.segment)} · {round.tee} tees · Round HCP {roundHandicap ?? "—"}</p>
+          <p><MapPin size={14} /> {course.location} · {round.tee} tees · Round HCP {roundHandicap ?? "—"}</p>
           <time dateTime={playedOn}>{shownDate.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</time>
         </div>
-        <div className="round-detail-total"><small>TOTAL</small><strong>{total}</strong><span>{formatToPar(total - par)}</span></div>
+        <div className="round-detail-total"><FormatMark segment={round.segment} holesPlayed={holes.length} /><small>TOTAL</small><strong>{total}</strong><span>{formatToPar(total - par)}</span></div>
       </header>
 
       <section className="score-mix surface-card" aria-label="Score breakdown">

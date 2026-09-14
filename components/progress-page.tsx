@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CaretRight, FileArrowDown, FlagPennant, Gauge, Medal, TrendUp } from "@phosphor-icons/react";
+import { ArrowRight, CaretRight, FileArrowDown, FlagPennant, Gauge, TrendUp } from "@phosphor-icons/react";
+import { FormatMark } from "@/components/format-mark";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { buildHistoryCsv, historyExportFilename } from "@/lib/history-export";
-import { buildRoundInsights, estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound, trackedRoundMetrics } from "@/lib/metrics";
-import type { GolfRound } from "@/lib/types";
+import { buildRoundInsights, estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound, trackedRoundMetrics, type RoundSummary } from "@/lib/metrics";
+import { bestByFormat, describeFormatCounts, formatLabel, litHalves, pacePerHole, paceHeights } from "@/lib/round-format";
+import type { GolfRound, RoundSegment } from "@/lib/types";
+
+const shortDate = (date: string) => new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
 export function ProgressPage() {
   const data = useGolfData();
@@ -20,13 +24,21 @@ export function ProgressPage() {
     .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
   const handicap = estimateHandicap(completed);
   const roundsById = new Map(completed.map((round) => [round.id, round]));
+  // A summary carries only a display label for its segment; the saved round has the real one.
+  const segmentOf = (roundId: string): RoundSegment => roundsById.get(roundId)?.segment ?? "front9";
   const insightsByRound = buildRoundInsights(completed);
   const average = scoringAverage(completed);
-  const best = [...summaries].sort((a, b) => a.toPar - b.toPar)[0];
+  const best = bestByFormat(summaries);
   const averageToPar = summaries.length
     ? summaries.reduce((sum, round) => sum + (round.toPar / round.holesPlayed) * 18, 0) / summaries.length
     : null;
   const holesLogged = summaries.reduce((sum, round) => sum + round.holesPlayed, 0);
+  const formatCounts = describeFormatCounts(summaries);
+  const recent = summaries.slice(0, 6).reverse();
+  const recentHeights = paceHeights(recent.map((round) => pacePerHole(round.toPar, round.holesPlayed)));
+
+  const bestNote = (round: RoundSummary | null, format: string) =>
+    round ? `${round.courseName} · ${shortDate(round.date)}` : `No ${format} rounds yet`;
 
   return (
     <div className="page-shell progress-page">
@@ -53,34 +65,50 @@ export function ProgressPage() {
 
           <section className="metric-grid">
             <Metric icon={<Gauge size={20} />} label="Scoring avg." value={average?.toFixed(1) ?? "—"} note="18-hole pace" />
-            <Metric icon={<Medal size={20} />} label="Best round" value={best ? formatToPar(best.toPar) : "—"} note={best?.segment ?? "No rounds"} />
-            <Metric icon={<FlagPennant size={20} />} label="Rounds" value={String(completed.length)} note={`${holesLogged} ${holesLogged === 1 ? "hole" : "holes"} logged`} />
             <Metric icon={<TrendUp size={20} />} label="Avg. to par" value={averageToPar == null ? "—" : formatToPar(Math.round(averageToPar))} note="18-hole pace" />
+            <Metric
+              icon={<FormatMark segment="front9" holesPlayed={9} label="none" />}
+              label="Best 9"
+              value={best.nine ? formatToPar(best.nine.toPar) : "—"}
+              note={bestNote(best.nine, "9-hole")}
+            />
+            <Metric
+              icon={<FormatMark segment="full18" holesPlayed={18} label="none" />}
+              label="Best 18"
+              value={best.eighteen ? formatToPar(best.eighteen.toPar) : "—"}
+              note={bestNote(best.eighteen, "18-hole")}
+            />
+            <Metric icon={<FlagPennant size={20} />} label="Rounds" value={String(completed.length)} note={formatCounts ?? `${holesLogged} ${holesLogged === 1 ? "hole" : "holes"} logged`} />
           </section>
 
           <section className="trend-card surface-card">
-            <div className="section-heading"><div><h2>Recent rounds</h2></div><span>TO PAR</span></div>
+            <div className="section-heading"><div><h2>Scoring pace</h2></div><span>TO PAR</span></div>
             <div className="trend-bars">
-              {summaries.slice(0, 6).reverse().map((round) => {
-                const height = Math.max(18, Math.min(100, 22 + Math.abs(round.toPar) * 7));
-                const date = new Date(round.date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+              {recent.map((round, index) => {
+                const segment = segmentOf(round.id);
+                const halves = litHalves(segment, round.holesPlayed);
+                const height = `${recentHeights[index]}px`;
                 return (
                   <Link
                     key={round.id}
                     href={`/rounds/${round.id}`}
                     className="trend-column"
-                    aria-label={`Open ${round.courseName}, ${round.holesPlayed} holes, ${formatToPar(round.toPar)} to par`}
+                    aria-label={`Open ${round.courseName}, ${formatLabel(segment, round.holesPlayed)}, ${formatToPar(round.toPar)} to par`}
                   >
                     <span className="trend-score">{formatToPar(round.toPar)}</span>
-                    <i className="trend-bar" style={{ height: `${height}px` }} />
+                    <span className="trend-track" aria-hidden="true">
+                      <i className={halves.front ? "trend-half on" : "trend-half ghost"} style={{ height }} />
+                      <i className={halves.back ? "trend-half on" : "trend-half ghost"} style={{ height }} />
+                    </span>
                     <span className="trend-round-meta">
                       <strong title={round.courseName}>{round.courseName}</strong>
-                      <small>{round.holesPlayed} holes · {date}</small>
+                      <small><FormatMark segment={segment} holesPlayed={round.holesPlayed} label="short" /> · {shortDate(round.date)}</small>
                     </span>
                   </Link>
                 );
               })}
             </div>
+            <p className="trend-footnote">Bar height evens out 9 and 18 holes. Labels are what you shot.</p>
           </section>
 
           <section className="history-section">
@@ -96,7 +124,7 @@ export function ProgressPage() {
                     <span className="round-date"><strong>{new Date(round.date).getDate()}</strong><small>{new Date(round.date).toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</small></span>
                     <span className="round-info">
                       <strong>{round.courseName}</strong>
-                      <small>{round.segment} · {round.holesPlayed} holes · Round HCP {roundHandicap ?? "—"}</small>
+                      <small>{savedRound?.tee ? `${savedRound.tee} tees · ` : ""}Round HCP {roundHandicap ?? "—"}</small>
                       {insights.length || facts.length ? (
                         <span className="round-insights">
                           {insights.map((insight) => <small key={`${insight.tone}-${insight.text}`} className={`round-insight ${insight.tone}`}>{insight.tone === "strength" ? "Best" : "Focus"} · {insight.text}</small>)}
@@ -104,7 +132,10 @@ export function ProgressPage() {
                         </span>
                       ) : null}
                     </span>
-                    <span className="round-score"><strong>{round.total}</strong><small>{formatToPar(round.toPar)}</small></span>
+                    <span className="round-score">
+                      <FormatMark segment={segmentOf(round.id)} holesPlayed={round.holesPlayed} />
+                      <span className="round-score-line"><strong>{round.total}</strong><small>{formatToPar(round.toPar)}</small></span>
+                    </span>
                     <CaretRight className="round-open-icon" size={18} />
                   </Link>
                 );
