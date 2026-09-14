@@ -133,29 +133,11 @@ a { color: inherit; text-decoration: none; }
 .round-total strong { font-size: 32px; }
 .round-total span { color: var(--green); font-size: 18px; padding-bottom: 4px; }
 .hole-focus { padding: clamp(18px, 4vw, 30px); }
-.hole-nav { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; letter-spacing: .14em; }
-.hole-nav strong { color: var(--ink); font-size: 15px; }
-.hole-nav button { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: transparent; display: grid; place-items: center; cursor: pointer; }
-.hole-nav button:disabled { opacity: .25; }
-.hole-stats { display: grid; grid-template-columns: 1fr 1.3fr 1fr; margin: 30px 0; }
-.hole-stats > div { text-align: center; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
-.hole-stats > div:last-child { border: 0; }
-.hole-stats small { color: var(--faint); font-size: 9px; letter-spacing: .17em; }
-.hole-stats strong { font-size: clamp(45px, 10vw, 66px); line-height: 1; margin: 5px 0; letter-spacing: -.06em; }
-.hole-stats > div:nth-child(2) strong { color: var(--green); }
-.hole-stats span { color: var(--muted); font-size: 10px; }
-.handicap-help { margin: -18px 0 24px; color: var(--faint); font-size: 10px; line-height: 1.45; text-align: center; }
 .club-callout { display: grid; grid-template-columns: minmax(150px, .7fr) 1fr; gap: 22px; padding: 18px; border-radius: 14px; background: rgba(0,0,0,.19); margin-bottom: 22px; }
 .club-callout div { display: flex; flex-direction: column; gap: 5px; }
 .club-callout small { color: var(--faint); font-size: 9px; letter-spacing: .14em; }
 .club-callout strong { color: var(--green); font-size: 19px; }
 .club-callout p { margin: 0; color: var(--muted); line-height: 1.45; font-size: 13px; }
-.score-stepper { display: grid; grid-template-columns: 54px 1fr 54px; align-items: center; gap: 14px; max-width: 340px; margin: 0 auto 20px; }
-.score-stepper button { width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--line); background: rgba(0,0,0,.16); display: grid; place-items: center; cursor: pointer; }
-.score-stepper > div { text-align: center; display: flex; flex-direction: column; }
-.score-stepper span { color: var(--faint); font-size: 9px; letter-spacing: .15em; }
-.score-stepper strong { font-size: 54px; line-height: .95; }
-.score-stepper small { color: var(--green); font-size: 11px; margin-top: 5px; }
 .optional-stats { margin-top: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(0,0,0,.13); overflow: hidden; }
 .optional-stats summary { min-height: 48px; padding: 0 15px; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; list-style: none; }
 .optional-stats summary::-webkit-details-marker { display: none; }
@@ -449,10 +431,151 @@ a { color: inherit; text-decoration: none; }
 .caddy-toggle.active { border-color: rgba(173,240,95,.4); background: rgba(173,240,95,.1); color: var(--green); }
 .round-header-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
 
+/* Live round, tuned for bright sun.
+   Every control tapped on every hole has a boundary contrast of at least 7:1 against its
+   surface, measured rather than judged by eye: the 11% outlines these replace measured
+   1.35:1 and vanished in glare, leaving a thin icon floating with no visible button. */
+.live-round { --field-label: #cfd9d1; --field-control: #33503b; --field-control-edge: rgba(243,241,232,.7); --field-dock: #0b1610; }
+
+/* The scoring dock takes the place of the tab bar while a round is open. */
+html[data-live-round] .bottom-nav { display: none; }
+html[data-live-round] .app-frame { padding-bottom: calc(172px + env(safe-area-inset-bottom)); }
+html[data-live-round] .page-shell { padding-top: 18px; }
+
+.live-round .round-header { margin-bottom: 14px; align-items: center; }
+.live-round .round-header > div:first-child > p:last-child { color: var(--field-label); }
+.live-round .round-total small { color: var(--field-label); font-size: 11px; font-weight: 700; }
+.live-round .caddy-toggle { min-height: 44px; border: 2px solid var(--field-control-edge); color: var(--ink); }
+.live-round .caddy-toggle.active { border-color: var(--green); background: rgba(173,240,95,.16); color: var(--green); }
+
+.hole-brief { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 2px solid rgba(243,241,232,.22); border-radius: 16px; overflow: hidden; margin-bottom: 8px; }
+.hole-brief > div { min-width: 0; display: flex; flex-direction: column; align-items: center; padding: 10px 4px; border-right: 1px solid rgba(243,241,232,.16); }
+.hole-brief > div:last-child { border-right: 0; }
+.hole-brief small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--field-label); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.hole-brief strong { font-size: 30px; line-height: 1.05; letter-spacing: -.04em; color: var(--ink); }
+.hole-brief > div:nth-child(3) strong { color: var(--green); }
+.hole-brief-note { margin: 0 0 16px; color: var(--field-label); font-size: 12px; line-height: 1.4; text-align: center; }
+
+/* Everything used to score a hole, fixed under the thumb however far the page scrolls. */
+.score-dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--field-dock); border-top: 1px solid rgba(243,241,232,.2); box-shadow: 0 -18px 40px rgba(0,0,0,.5); }
+.score-dock-inner { max-width: 560px; margin: 0 auto; display: grid; gap: 8px; }
+.dock-hole-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px; align-items: center; gap: 8px; }
+.dock-hole-label { min-width: 0; display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.dock-hole-label strong { color: var(--ink); font-size: 18px; }
+.dock-hole-label span { color: var(--field-label); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.dock-nav-button, .dock-step { display: grid; place-items: center; border: 2px solid var(--field-control-edge); background: var(--field-control); color: var(--ink); cursor: pointer; }
+.dock-nav-button { width: 52px; height: 48px; border-radius: 14px; }
+.dock-nav-button:disabled { opacity: .35; cursor: not-allowed; }
+/* A deliberate gap before Save, so a thumb reaching for plus does not record the hole. */
+.dock-score-row { display: grid; grid-template-columns: 58px 70px 58px minmax(0, 1fr); align-items: center; gap: 8px; }
+.dock-step { width: 58px; height: 58px; border-radius: 16px; }
+.dock-step:active, .dock-nav-button:active:not(:disabled), .dock-save:active { transform: scale(.96); }
+.dock-score { display: flex; flex-direction: column; align-items: center; text-align: center; line-height: 1; }
+.dock-score strong { color: var(--ink); font-size: 36px; letter-spacing: -.04em; }
+.dock-score span { margin-top: 3px; color: var(--green); font-size: 11px; font-weight: 700; line-height: 1.15; }
+.dock-save { height: 58px; margin-left: 6px; border: 0; border-radius: 16px; background: var(--green); color: #0a150c; font-size: 16px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.dock-save.saved { border: 2px solid var(--green); background: transparent; color: var(--green); }
+.score-dock button:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
+
+.live-round .optional-stats { border: 2px solid rgba(243,241,232,.28); }
+.live-round .optional-stats summary { min-height: 54px; }
+.live-round .optional-stats summary span { font-size: 15px; }
+.live-round .optional-stats summary small, .live-round .optional-stat-row > span small { color: var(--field-label); font-size: 11px; }
+.live-round .optional-stat-row > span strong { font-size: 15px; }
+.live-round .metric-counter { grid-template-columns: 48px 40px 48px; }
+.live-round .metric-counter button { width: 46px; height: 46px; border: 2px solid var(--field-control-edge); background: var(--field-control); color: var(--ink); }
+.live-round .metric-counter button:disabled { opacity: .35; }
+.live-round .metric-counter strong { font-size: 18px; }
+.live-round .choice-pills { padding: 3px; border: 2px solid var(--field-control-edge); }
+.live-round .choice-pills button { min-height: 44px; padding: 0 18px; color: var(--ink); font-size: 14px; font-weight: 700; }
+.live-round .choice-pills button.active, .live-round .metric-toggle.active { background: var(--green); color: #0a150c; }
+.live-round .metric-toggle { min-height: 44px; border: 2px solid var(--field-control-edge); background: var(--field-control); color: var(--ink); font-size: 14px; font-weight: 700; }
+
+.live-round .caddy-head-label, .live-round .caddy-readout small, .live-round .caddy-distance-row small, .live-round .club-callout small { color: var(--field-label); font-size: 11px; font-weight: 700; }
+.live-round .caddy-readout p, .live-round .club-callout p { color: var(--field-label); font-size: 14px; }
+.live-round .caddy-readout strong { font-size: 24px; }
+.live-round .caddy-distance-row strong { font-size: 32px; }
+.live-round .caddy-view-map { max-height: 52vh; }
+.live-round .caddy-hole-hint { padding: 10px 12px; font-size: 14px; font-weight: 700; }
+.live-round .caddy-hole-hint button { min-height: 44px; padding: 0 16px; border: 0; background: var(--green); color: #0a150c; font-size: 14px; font-weight: 800; }
+.live-round .caddy-hole-hint button:last-child { padding: 0 12px; border: 2px solid var(--field-control-edge); background: var(--field-control); color: var(--ink); }
+.live-round .caddy-status { font-size: 13px; }
+.live-round .caddy-status button { min-height: 44px; border: 2px solid var(--field-control-edge); background: var(--field-control); color: var(--ink); font-weight: 700; }
+.live-round .caddy-expand-hint { padding: 7px 11px; border: 1px solid var(--field-control-edge); background: rgba(8,17,12,.86); color: var(--ink); font-size: 12px; }
+.live-round .caddy-attribution { color: var(--field-label); }
+.live-round .caddy-inline-off { min-height: 48px; color: var(--field-label); font-size: 13px; }
+
+.live-round .score-grid { border: 2px solid rgba(243,241,232,.22); }
+.live-round .hole-cell span, .live-round .hole-cell small { color: var(--field-label); font-size: 10px; }
+.live-round .hole-cell strong { font-size: 20px; }
+.live-round .hole-cell.selected { background: rgba(173,240,95,.2); box-shadow: inset 0 0 0 2px var(--green); }
+.live-round .feedback-line { font-size: 14px; }
+.live-round .secondary-button { border: 2px solid var(--field-control-edge); color: var(--ink); }
+
+@media (max-width: 360px) {
+  .dock-score-row { grid-template-columns: 52px 62px 52px minmax(0, 1fr); gap: 6px; }
+  .dock-step { width: 52px; height: 52px; }
+  .dock-save { height: 52px; font-size: 14px; }
+  .hole-brief strong { font-size: 26px; }
+}
+
+/* Completed round.
+   Score marks follow the paper-scorecard convention golfers already read without thinking:
+   circle for birdie, double circle for eagle, square for bogey, double square for double,
+   filled square beyond that. Colour is a second cue, never the only one. */
+.score-mark { --mark: var(--ink); --mark-gap: #13241a; box-sizing: border-box; display: inline-grid; place-items: center; min-width: 34px; height: 34px; padding: 0 5px; color: var(--mark); font-size: 17px; font-weight: 800; line-height: 1; }
+.score-mark.eagle { --mark: #f5c451; border: 2px solid var(--mark); border-radius: 999px; box-shadow: 0 0 0 2px var(--mark-gap), 0 0 0 4px var(--mark); }
+.score-mark.birdie { --mark: var(--green); border: 2px solid var(--mark); border-radius: 999px; }
+.score-mark.par { --mark: var(--ink); }
+.score-mark.bogey { --mark: var(--sand); border: 2px solid var(--mark); border-radius: 6px; }
+.score-mark.double { --mark: #f2a56b; border: 2px solid var(--mark); border-radius: 6px; box-shadow: 0 0 0 2px var(--mark-gap), 0 0 0 4px var(--mark); }
+.score-mark.triple { --mark: var(--danger); background: var(--mark); color: #2b0f08; border-radius: 6px; }
+.inline-score-control strong.score-mark { justify-self: center; font-size: 18px; }
+/* Centred in their tracks so the mark between them has equal room on both sides for its ring. */
+.inline-score-control button { justify-self: center; }
+
+.score-mix { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; padding: 18px 12px; }
+.score-mix-item { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.score-mix-item .score-mark { min-width: 44px; height: 44px; font-size: 20px; }
+.score-mix-item small { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-align: center; }
+.score-mix-item.empty { opacity: .38; }
+
+.round-report { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.report-card { padding: 18px 20px; }
+.report-card h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 16px; letter-spacing: -.01em; }
+.report-card.good h2 { color: var(--green); }
+.report-card.bad h2 { color: var(--danger); }
+.report-card ul { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.report-card li { position: relative; padding-left: 16px; color: var(--ink); font-size: 14px; line-height: 1.4; }
+.report-card li::before { content: ""; position: absolute; left: 0; top: .5em; width: 7px; height: 7px; border-radius: 50%; }
+.report-card.good li::before { background: var(--green); }
+.report-card.bad li::before { background: var(--danger); }
+.report-empty { margin: 0; color: var(--muted); font-size: 14px; }
+
+.caddy-take { margin-top: 22px; padding: 22px; }
+.caddy-take .eyebrow { margin-bottom: 12px; }
+.take-headline { margin: 0 0 16px; font-size: clamp(20px, 4.6vw, 26px); line-height: 1.2; letter-spacing: -.025em; }
+.take-block { margin-bottom: 14px; }
+.take-block h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+.take-block.good h3 { color: var(--green); }
+.take-block.bad h3 { color: var(--danger); }
+.take-block ul { display: grid; gap: 6px; margin: 0; padding-left: 18px; }
+.take-block li { color: var(--ink); font-size: 14px; line-height: 1.45; }
+.take-signoff { margin: 16px 0 10px; padding: 12px 14px; border-left: 3px solid var(--green); background: rgba(173,240,95,.07); color: var(--ink); font-size: 15px; font-style: italic; }
+.take-footnote { color: var(--muted); font-size: 11px; }
+.take-note { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 14px; }
+.take-error { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--sand); font-size: 14px; }
+.take-error button { margin-left: auto; min-height: 40px; padding: 0 14px; border: 1px solid rgba(243,241,232,.4); border-radius: 10px; background: transparent; color: var(--ink); display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(173,240,95,.32); } 50% { box-shadow: 0 0 0 12px rgba(173,240,95,0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 680px) {
+  .score-mix { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 16px; }
+  .round-report { grid-template-columns: 1fr; }
+  .inline-score-control strong.score-mark { min-width: 28px; height: 28px; padding: 0 3px; font-size: 15px; }
+  .inline-score-control strong.score-mark.eagle, .inline-score-control strong.score-mark.double { box-shadow: 0 0 0 1px var(--mark-gap), 0 0 0 3px var(--mark); }
+  .caddy-take { padding: 18px; }
   .caddy-readout { grid-template-columns: 1fr; gap: 8px; }
   .caddy-view-map { max-height: 58vh; }
   .round-header-actions { gap: 9px; }
@@ -489,7 +612,6 @@ a { color: inherit; text-decoration: none; }
   .local-pill span { display: none; }
   .golfer-name { max-width: 74px; }
   .segment-control button { font-size: 12px; }
-  .hole-stats strong { font-size: 45px; }
   .voice-control { grid-template-columns: 56px 1fr; }
   .mic-button { width: 56px; height: 56px; }
   .round-actions { flex-direction: column-reverse; }

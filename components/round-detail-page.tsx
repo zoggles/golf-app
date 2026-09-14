@@ -2,14 +2,42 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { ArrowLeft, Check, MapPin, Minus, Plus, Trash } from "@phosphor-icons/react";
+import { useMemo, useState, type ReactNode } from "react";
+import {
+  ArrowClockwise,
+  ArrowLeft,
+  Check,
+  MapPin,
+  Minus,
+  Plus,
+  Sparkle,
+  Spinner,
+  ThumbsUp,
+  Trash,
+  TrendDown,
+  TrendUp,
+  WarningCircle,
+} from "@phosphor-icons/react";
 import { useGolfData } from "@/hooks/use-golf-data";
+import { useRoundSummary, type SummaryState } from "@/hooks/use-round-summary";
 import { getSegmentHoles, segmentLabel } from "@/lib/courses";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, trackedRoundMetrics } from "@/lib/metrics";
+import {
+  buildRoundReport,
+  buildSummaryInput,
+  compareToPrevious,
+  previousCompletedRounds,
+  roundSummaryFingerprint,
+  SCORE_TYPE_NAMES,
+  SCORE_TYPES,
+  scoreType,
+} from "@/lib/round-report";
 import { dateInputValue, parseDateInput, roundDateInputValue } from "@/lib/round-date";
 import { deleteRound, updateCompletedRound } from "@/lib/storage";
 import type { GolfRound } from "@/lib/types";
+
+/** Below this there isn’t enough golf on the card to say anything fair about it. */
+const SUMMARY_MIN_HOLES = 9;
 
 export function RoundDetailPage({ roundId }: { roundId: string }) {
   const data = useGolfData();
@@ -24,10 +52,10 @@ export function RoundDetailPage({ roundId }: { roundId: string }) {
     );
   }
 
-  return <RoundEditor key={round.id} round={round} handicapIndex={estimateHandicap(data.rounds)} />;
+  return <RoundEditor key={round.id} round={round} rounds={data.rounds} handicapIndex={estimateHandicap(data.rounds)} />;
 }
 
-function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex: number | null }) {
+function RoundEditor({ round, rounds, handicapIndex }: { round: GolfRound; rounds: GolfRound[]; handicapIndex: number | null }) {
   const router = useRouter();
   const course = round.course;
   const holes = useMemo(() => getSegmentHoles(course, round.segment), [course, round.segment]);
@@ -45,6 +73,25 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
   const metricsByHole = holeMetricsByNumber(round);
   const tracked = trackedRoundMetrics(round);
   const hasTrackedStats = tracked.puttsHoles > 0 || tracked.penaltyHoles > 0 || tracked.fairwaysTracked > 0;
+
+  // The card and the lists follow unsaved edits, so fixing a score shows its effect at once.
+  const report = useMemo(() => buildRoundReport(round, scores), [round, scores]);
+  // The summary is written about what is stored, never about an edit that may be discarded.
+  const savedReport = useMemo(() => buildRoundReport(round), [round]);
+  const previous = useMemo(() => previousCompletedRounds(rounds, round), [rounds, round]);
+  const comparison = useMemo(
+    () => compareToPrevious(savedReport, previous.map((item) => buildRoundReport(item))),
+    [savedReport, previous],
+  );
+  const fingerprint = useMemo(() => roundSummaryFingerprint(round, previous), [round, previous]);
+  const summaryInput = useMemo(() => buildSummaryInput(round, savedReport, comparison), [round, savedReport, comparison]);
+  const canSummarize = savedReport.holesScored >= SUMMARY_MIN_HOLES;
+  const summary = useRoundSummary({
+    roundId: round.id,
+    fingerprint,
+    input: summaryInput,
+    enabled: canSummarize && !isDirty,
+  });
 
   function changeScore(holeNumber: number, change: number) {
     setSaved(false);
@@ -82,6 +129,34 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
         <div className="round-detail-total"><small>TOTAL</small><strong>{total}</strong><span>{formatToPar(total - par)}</span></div>
       </header>
 
+      <section className="score-mix surface-card" aria-label="Score breakdown">
+        {SCORE_TYPES.map((type) => (
+          <div key={type} className={report.mix[type] ? "score-mix-item" : "score-mix-item empty"}>
+            <span className={`score-mark ${type}`}>{report.mix[type]}</span>
+            <small>{SCORE_TYPE_NAMES[type].plural}</small>
+          </div>
+        ))}
+      </section>
+
+      <section className="round-report" aria-label="What went well and what cost you">
+        <div className="report-card good surface-card">
+          <h2><ThumbsUp size={17} weight="fill" /> Went well</h2>
+          {report.wentWell.length ? (
+            <ul>{report.wentWell.map((fact) => <li key={fact.key}>{fact.text}</li>)}</ul>
+          ) : (
+            <p className="report-empty">Tough day. Tomorrow’s a fresh card.</p>
+          )}
+        </div>
+        <div className="report-card bad surface-card">
+          <h2><TrendDown size={17} weight="bold" /> Cost you</h2>
+          {report.costYou.length ? (
+            <ul>{report.costYou.map((fact) => <li key={fact.key}>{fact.text}</li>)}</ul>
+          ) : (
+            <p className="report-empty">Nothing expensive out there. Suspiciously tidy.</p>
+          )}
+        </div>
+      </section>
+
       {hasTrackedStats ? (
         <section className="round-tracked-summary surface-card" aria-label="Tracked on-course stats">
           {tracked.fairwaysTracked ? <div><small>FAIRWAYS</small><strong>{Math.round((tracked.fairwaysHit / tracked.fairwaysTracked) * 100)}%</strong><span>{tracked.fairwaysHit} of {tracked.fairwaysTracked}</span></div> : null}
@@ -109,7 +184,9 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
         <div className="round-editor-heading"><span>HOLE</span><span>PAR</span><span>HOLE HCP</span><span>YARDS</span><span>SCORE</span></div>
         {holes.map((hole) => {
           const metrics = metricsByHole[hole.number];
-          const derivedBlowUp = scores[hole.number] != null && scores[hole.number] >= hole.par + 3;
+          const strokes = scores[hole.number];
+          const mark = strokes != null ? scoreType(strokes, hole.par) : null;
+          const derivedBlowUp = strokes != null && strokes >= hole.par + 3;
           return <div className="round-editor-row" key={hole.number}>
             <strong>{hole.number}</strong>
             <span>{hole.par}</span>
@@ -117,7 +194,12 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
             <span>{hole.yards}</span>
             <div className="inline-score-control">
               <button type="button" onClick={() => changeScore(hole.number, -1)} aria-label={`Decrease hole ${hole.number} score`}><Minus size={16} /></button>
-              <strong>{scores[hole.number] ?? "—"}</strong>
+              <strong
+                className={mark ? `score-mark ${mark}` : undefined}
+                aria-label={mark ? `${strokes}, ${SCORE_TYPE_NAMES[mark].single}` : "No score"}
+              >
+                {strokes ?? "—"}
+              </strong>
               <button type="button" onClick={() => changeScore(hole.number, 1)} aria-label={`Increase hole ${hole.number} score`}><Plus size={16} /></button>
             </div>
             {metrics && Object.keys(metrics).length ? (
@@ -139,6 +221,77 @@ function RoundEditor({ round, handicapIndex }: { round: GolfRound; handicapIndex
           <button className="primary-button" type="button" onClick={saveChanges} disabled={!isDirty}>Save changes</button>
         </div>
       </div>
+
+      <CaddyTake
+        state={summary.state}
+        retry={summary.retry}
+        dirty={isDirty}
+        canSummarize={canSummarize}
+        previousCount={comparison.previousCount}
+      />
     </div>
+  );
+}
+
+function CaddyTake({
+  state,
+  retry,
+  dirty,
+  canSummarize,
+  previousCount,
+}: {
+  state: SummaryState;
+  retry: () => void;
+  dirty: boolean;
+  canSummarize: boolean;
+  previousCount: number;
+}) {
+  let body: ReactNode;
+  if (dirty) {
+    body = <p className="take-note">Save your changes and the caddy will take another look.</p>;
+  } else if (!canSummarize) {
+    body = <p className="take-note">The caddy weighs in once at least nine holes are on the card.</p>;
+  } else if (state.status === "ready") {
+    const { summary } = state;
+    body = (
+      <>
+        <h2 className="take-headline">{summary.headline}</h2>
+        {summary.improving.length ? (
+          <div className="take-block good">
+            <h3><TrendUp size={16} weight="bold" /> Getting better</h3>
+            <ul>{summary.improving.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}</ul>
+          </div>
+        ) : null}
+        <div className="take-block bad">
+          <h3><TrendDown size={16} weight="bold" /> Keep working on</h3>
+          <ul>{summary.workOn.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}</ul>
+        </div>
+        <p className="take-signoff">{summary.signOff}</p>
+        <small className="take-footnote">
+          {previousCount
+            ? `Compared with your last ${previousCount} ${previousCount === 1 ? "round" : "rounds"}.`
+            : "First round on the books, so this one sets the bar."}
+        </small>
+      </>
+    );
+  } else if (state.status === "error") {
+    body = (
+      <div className="take-error">
+        <WarningCircle size={18} weight="fill" />
+        <span>{state.message}</span>
+        {state.retryable ? (
+          <button type="button" onClick={retry}><ArrowClockwise size={15} weight="bold" /> Try again</button>
+        ) : null}
+      </div>
+    );
+  } else {
+    body = <p className="take-note"><Spinner size={16} className="spin" /> Reviewing the tape…</p>;
+  }
+
+  return (
+    <section className="caddy-take surface-card" aria-live="polite">
+      <p className="eyebrow"><Sparkle size={13} weight="fill" /> THE CADDY’S TAKE</p>
+      {body}
+    </section>
   );
 }

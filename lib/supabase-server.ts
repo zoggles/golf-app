@@ -515,3 +515,47 @@ export async function saveCourseGeometryLink(link: {
     }),
   });
 }
+
+interface RoundSummaryRow {
+  fingerprint: string;
+  summary: unknown;
+}
+
+/** True only when the game exists and belongs to this golfer. */
+export async function gameBelongsToGolfer(gameId: string, golferId: string): Promise<boolean> {
+  const rows = await rest<Array<{ id: string }>>(
+    `games?select=id&id=eq.${encodeURIComponent(gameId)}&golfer_id=eq.${encodeURIComponent(golferId)}&limit=1`,
+    { method: "GET" },
+  );
+  return rows.length > 0;
+}
+
+/** A stored summary, filtered by golfer so one account can never read another's. */
+export async function readRoundSummaryRow(gameId: string, golferId: string): Promise<RoundSummaryRow | null> {
+  const rows = await rest<RoundSummaryRow[]>(
+    `round_summaries?select=fingerprint,summary&game_id=eq.${encodeURIComponent(gameId)}&golfer_id=eq.${encodeURIComponent(golferId)}&limit=1`,
+    { method: "GET" },
+  );
+  return rows[0] ?? null;
+}
+
+export async function saveRoundSummaryRow(row: {
+  gameId: string;
+  golferId: string;
+  fingerprint: string;
+  summary: unknown;
+  model: string;
+}): Promise<void> {
+  await rest<unknown[]>("round_summaries?on_conflict=game_id", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=representation",
+    body: JSON.stringify({
+      game_id: row.gameId,
+      golfer_id: row.golferId,
+      fingerprint: row.fingerprint,
+      summary: row.summary,
+      model: row.model,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+}

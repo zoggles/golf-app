@@ -115,7 +115,7 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
       <div className={expanded ? "caddy-view caddy-view-expanded" : "caddy-view"}>
         <div className="caddy-head">
           <span className="caddy-head-label">
-            <Path size={13} weight="bold" /> HOLE {hole.number} · PAR {hole.par} · {hole.yards} YDS
+            <Path size={13} weight="bold" /> CADDY VIEW
           </span>
           {fix ? (
             <span className={fix.accuracyM > WEAK_FIX_M ? "caddy-signal weak" : "caddy-signal"}>
@@ -232,6 +232,12 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
   if (!fix || !plan || !holeGeometry) {
     return shell(
       <>
+        {statusRow(
+          "",
+          <Spinner size={16} className="spin" />,
+          geometry.status === "loading" ? "Loading the hole map…" : "Finding you…",
+        )}
+        <ClubCallout hole={hole} />
         {holeGeometry ? (
           <CaddyMap
             hole={holeGeometry}
@@ -256,12 +262,6 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
             dimmed
           />
         ) : null}
-        {statusRow(
-          "",
-          <Spinner size={16} className="spin" />,
-          geometry.status === "loading" ? "Loading the hole map…" : "Finding you…",
-        )}
-        <ClubCallout hole={hole} />
       </>,
     );
   }
@@ -272,41 +272,6 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
 
   return shell(
     <>
-      <button
-        type="button"
-        className="caddy-map-button"
-        onClick={() => setExpanded((value) => !value)}
-        aria-label={expanded ? "Shrink the hole map" : "Expand the hole map"}
-      >
-        <CaddyMap
-          // A new hole or a change of shot is a new picture, so the reveal plays again.
-          // A GPS tick alone is not, which is why accuracy and position are not in the key.
-          key={`${hole.number}-${plan.kind}-${expanded}`}
-          hole={holeGeometry}
-          plan={plan}
-          player={{ lat: fix.lat, lng: fix.lng }}
-          accuracyM={fix.accuracyM}
-          hazards={geometry.bundle?.geometry.hazards ?? []}
-        />
-        <span className="caddy-expand-hint">
-          {expanded ? <X size={13} weight="bold" /> : <ArrowsOutSimple size={13} weight="bold" />}
-          {expanded ? "Shrink" : "Expand"}
-        </span>
-      </button>
-
-      {suggestedHole !== hole.number ? (
-        <div className="caddy-hole-hint">
-          <MapPinSimple size={15} weight="fill" />
-          <span>Looks like you are on hole {suggestedHole}.</span>
-          <button type="button" onClick={() => onSelectHole(suggestedHole)}>
-            Switch
-          </button>
-          <button type="button" onClick={() => setHintDismissedFor(hole.number)} aria-label="Dismiss">
-            <X size={13} weight="bold" />
-          </button>
-        </div>
-      ) : null}
-
       <div className="caddy-readout">
         <div>
           <small>{plan.onGreen ? "ON THE GREEN" : plan.laidUp ? "LAY UP" : "PLAY"}</small>
@@ -340,6 +305,19 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
         </div>
       </div>
 
+      {suggestedHole !== hole.number ? (
+        <div className="caddy-hole-hint">
+          <MapPinSimple size={15} weight="fill" />
+          <span>Looks like you are on hole {suggestedHole}.</span>
+          <button type="button" onClick={() => onSelectHole(suggestedHole)}>
+            Switch
+          </button>
+          <button type="button" onClick={() => setHintDismissedFor(hole.number)} aria-label="Dismiss">
+            <X size={13} weight="bold" />
+          </button>
+        </div>
+      ) : null}
+
       {weak
         ? statusRow(
             "warn",
@@ -354,6 +332,28 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
           "That is past everything in your bag. Set your carries under My clubs.",
         )
       ) : null}
+
+      <button
+        type="button"
+        className="caddy-map-button"
+        onClick={() => setExpanded((value) => !value)}
+        aria-label={expanded ? "Shrink the hole map" : "Expand the hole map"}
+      >
+        <CaddyMap
+          // A new hole or a change of shot is a new picture, so the reveal plays again.
+          // A GPS tick alone is not, which is why accuracy and position are not in the key.
+          key={`${hole.number}-${plan.kind}-${expanded}`}
+          hole={holeGeometry}
+          plan={plan}
+          player={{ lat: fix.lat, lng: fix.lng }}
+          accuracyM={fix.accuracyM}
+          hazards={geometry.bundle?.geometry.hazards ?? []}
+        />
+        <span className="caddy-expand-hint">
+          {expanded ? <X size={13} weight="bold" /> : <ArrowsOutSimple size={13} weight="bold" />}
+          {expanded ? "Shrink" : "Expand"}
+        </span>
+      </button>
 
       <p className="caddy-attribution">
         Hole map: {geometry.bundle?.geometry.attribution}. Aiming at the centre of the green,

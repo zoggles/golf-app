@@ -356,6 +356,18 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
   const [activity, setActivity] = useState<string | null>(null);
   const completionActionsRef = useRef<HTMLDivElement | null>(null);
 
+  // The scoring dock takes the tab bar's place for as long as a round is open, so the
+  // controls used on every hole stay under the thumb. Marked on the document rather than
+  // passed up to AppShell, so it holds on the web route, the root route and the Android
+  // hash router alike.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.liveRound = "true";
+    return () => {
+      delete root.dataset.liveRound;
+    };
+  }, []);
+
   const currentHole = course.holes.find((item) => item.number === selectedHole) ?? course.holes[0];
 
   if (!round) return null;
@@ -474,8 +486,14 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
     setManualScore(round!.scores[holeNumber] ?? selected?.par ?? 4);
   }
 
+  // Say whether this hole is already on the card, so a glance at the dock answers
+  // "did I save that" without scrolling to the scorecard.
+  const savedScore = round.scores[currentHole.number];
+  const scoreIsSaved = savedScore != null && savedScore === manualScore;
+  const saveLabel = savedScore == null ? `Save ${currentHole.number}` : scoreIsSaved ? "Saved" : `Update ${currentHole.number}`;
+
   return (
-    <>
+    <div className="live-round">
       <section className="round-header">
         <div>
           <p className="eyebrow"><span className="live-dot" /> ROUND IN PROGRESS</p>
@@ -497,17 +515,15 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
       </section>
 
       <section className="hole-focus surface-card">
-        <div className="hole-nav">
-          <button type="button" onClick={() => moveHole(-1)} disabled={selectedHole === holes[0].number} aria-label="Previous hole"><CaretLeft size={21} /></button>
-          <span>HOLE <strong>{currentHole.number}</strong> OF {holes[holes.length - 1].number}</span>
-          <button type="button" onClick={() => moveHole(1)} disabled={selectedHole === holes[holes.length - 1].number} aria-label="Next hole"><CaretRight size={21} /></button>
+        <div className="hole-brief">
+          <div><small>Hole</small><strong>{currentHole.number}</strong></div>
+          <div><small>Par</small><strong>{currentHole.par}</strong></div>
+          <div><small>{round.tee}</small><strong>{currentHole.yards}</strong></div>
+          <div><small>HCP</small><strong>{currentHole.handicap}</strong></div>
         </div>
-        <div className="hole-stats">
-          <div><small>PAR</small><strong>{currentHole.par}</strong></div>
-          <div><small>{round.tee.toUpperCase()}</small><strong>{currentHole.yards}</strong><span>YDS</span></div>
-          <div><small>HOLE HCP</small><strong>{currentHole.handicap}</strong><span>{currentHoleStrokes ? `YOU GET +${currentHoleStrokes}` : "NO STROKE"}</span></div>
-        </div>
-        <p className="handicap-help">Hole HCP ranks difficulty: 1 is hardest, 18 is easiest. “You get +1” marks a handicap stroke for this round.</p>
+        <p className="hole-brief-note">
+          {currentHoleStrokes ? `You get +${currentHoleStrokes} stroke${currentHoleStrokes > 1 ? "s" : ""} here.` : "No handicap stroke on this hole."} HCP 1 is the hardest hole.
+        </p>
         {caddyView.enabled ? (
           <CaddyView
             hole={currentHole}
@@ -519,14 +535,6 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
         ) : (
           <ClubCallout hole={currentHole} />
         )}
-        <div className="score-stepper">
-          <button type="button" onClick={() => setManualScore((score) => Math.max(1, score - 1))} aria-label="Decrease score"><Minus size={23} weight="bold" /></button>
-          <div><span>SCORE</span><strong>{manualScore}</strong><small>{formatScoreName(manualScore - currentHole.par)}</small></div>
-          <button type="button" onClick={() => setManualScore((score) => Math.min(20, score + 1))} aria-label="Increase score"><Plus size={23} weight="bold" /></button>
-        </div>
-        <button className="primary-button full-width" type="button" onClick={() => applyScore(currentHole.number, manualScore, "manual")}>
-          Save hole {currentHole.number} <Check size={19} weight="bold" />
-        </button>
         <details className="optional-stats" open={currentMetricCount > 0}>
           <summary><span>Track more</span><small>Optional{currentMetricCount ? ` · ${currentMetricCount} saved` : ""}</small></summary>
           <div className="optional-stats-grid">
@@ -586,7 +594,43 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
         </section>
         {!allHolesScored ? <p className="completion-note">Score {holes.length - completedHoles} more {holes.length - completedHoles === 1 ? "hole" : "holes"} to complete this round.</p> : null}
       </div>
-    </>
+
+      <section className="score-dock" aria-label="Score this hole">
+        <div className="score-dock-inner">
+          <div className="dock-hole-row">
+            <button type="button" className="dock-nav-button" onClick={() => moveHole(-1)} disabled={selectedHole === holes[0].number} aria-label="Previous hole">
+              <CaretLeft size={24} weight="bold" />
+            </button>
+            <div className="dock-hole-label">
+              <strong>Hole {currentHole.number}</strong>
+              <span>Par {currentHole.par} · {currentHole.yards} yds</span>
+            </div>
+            <button type="button" className="dock-nav-button" onClick={() => moveHole(1)} disabled={selectedHole === holes[holes.length - 1].number} aria-label="Next hole">
+              <CaretRight size={24} weight="bold" />
+            </button>
+          </div>
+          <div className="dock-score-row">
+            <button type="button" className="dock-step" onClick={() => setManualScore((score) => Math.max(1, score - 1))} aria-label="Decrease score">
+              <Minus size={26} weight="bold" />
+            </button>
+            <div className="dock-score" aria-live="polite">
+              <strong>{manualScore}</strong>
+              <span>{formatScoreName(manualScore - currentHole.par)}</span>
+            </div>
+            <button type="button" className="dock-step" onClick={() => setManualScore((score) => Math.min(20, score + 1))} aria-label="Increase score">
+              <Plus size={26} weight="bold" />
+            </button>
+            <button
+              type="button"
+              className={scoreIsSaved ? "dock-save saved" : "dock-save"}
+              onClick={() => applyScore(currentHole.number, manualScore, "manual")}
+            >
+              {saveLabel} <Check size={20} weight="bold" />
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 

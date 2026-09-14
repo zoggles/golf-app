@@ -111,20 +111,23 @@ played.
 
 ## Persistence
 
-Supabase is the source of truth. Two tables hold everything:
+Supabase is the source of truth:
 
 | Table | Holds |
 | --- | --- |
 | `golfers` | One row per verified account: `id`, display `name`, Auth owner, and optional legacy-claim email. |
 | `courses` | One row per course and tee: rating, slope, par, total yardage, source URL, and the full per-hole scorecard (`holes` jsonb — par, yardage, handicap, club, strategy). |
 | `games` | One row per game played: the `golfer_id` that owns it, course reference, segment, start and completion times, status, hole-by-hole `scores`, the voice/manual `events` log, and a `course_snapshot` of the scorecard as it was that day. |
+| `course_geometry` | OpenStreetMap geometry for one physical course: hole centrelines, greens and hazards, cached so Overpass is called about once per course. |
+| `course_geometry_links` | Which geometry row, and which hole in it, each scorecard hole belongs to, keyed on a tee-independent name and location. |
+| `round_summaries` | The AI caddy's post-round take for one game, stored with a fingerprint of what it was written about. |
 
-Courses are a shared catalogue — a scorecard is the same whoever plays it — while
-games belong to exactly one golfer.
+Courses and their geometry are a shared catalogue — a scorecard is the same whoever
+plays it — while games and their summaries belong to exactly one golfer.
 
 The browser never holds database credentials. `lib/storage.ts` talks to route
 handlers under `app/api/`, and only those run queries, using the project's
-secret key. Row level security is enabled on both tables with no policies, so
+secret key. Row level security is enabled on every table with no policies, so
 the publishable key reads nothing.
 
 `lib/storage.ts` writes every change to a local mirror first and queues an
@@ -169,3 +172,22 @@ Overpass is called at most once per physical course: the route checks the cache 
 then for any cached course within 2.5 km of the fix, before going out to the network. A
 course OSM has not mapped is recorded as an empty row so it is never looked up again, and
 greens can be captured by standing on them instead.
+
+## Round summaries
+
+A completed round's page marks every score the way a paper card does: a circle for a
+birdie, a double circle for an eagle, a square for a bogey, a double square for a double,
+and a filled square beyond that. Beside the card it lists what went well and what cost
+strokes. Those facts come from `lib/round-report.ts`, which never reports a stat that was
+not tracked.
+
+At the bottom, the AI caddy writes a short take comparing the round with the five before
+it. It runs on Gemini through the Vercel AI Gateway, like the app's other AI features, and
+is handed only the facts `round-report` computed, so it can joke about the numbers but not
+invent them. Each take is stored in `round_summaries` against a fingerprint of the round's
+scores, tracked stats, and the rounds it was compared with. Editing any of those writes a
+fresh take rather than quoting numbers that are no longer true.
+
+`CADDY_E2E=1 npx vitest run lib/round-summary.e2e.test.ts` runs the prompt against the real
+model. It needs gateway credentials locally: `AI_GATEWAY_API_KEY`, or a current
+`VERCEL_OIDC_TOKEN` from `vercel env pull`.
