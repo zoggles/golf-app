@@ -1,4 +1,5 @@
-import type { RoundSegment } from "./types";
+import { getCourse, getSegmentHoles } from "./courses";
+import type { GolfRound, RoundSegment } from "./types";
 
 /**
  * Telling nine- and eighteen-hole rounds apart, and comparing them fairly.
@@ -41,12 +42,12 @@ export function pacePerHole(toPar: number, holesPlayed: number): number {
 }
 
 /**
- * Bar heights for a set of rounds, scaled to those rounds.
+ * Bar heights for a set of paces, scaled to those paces.
  *
- * Measured up from even par, or from the best pace when a round went under, so a nine and an
- * eighteen played at the same pace stand at the same height and the tallest bar is the worst
- * pace on screen. This replaces a fixed multiplier that capped at +12, which drew every bar
- * at full height for anyone who usually plays above that.
+ * Measured up from even par, or from the best pace when one went under, so equal pace means
+ * equal height and the tallest bar is the worst pace on screen. This replaces a fixed
+ * multiplier that capped at +12, which drew every bar at full height for anyone who usually
+ * plays above that.
  */
 export function paceHeights(paces: number[], minHeight = 14, maxHeight = 100): number[] {
   if (paces.length === 0) return [];
@@ -55,6 +56,66 @@ export function paceHeights(paces: number[], minHeight = 14, maxHeight = 100): n
   const span = top - bottom;
   if (span === 0) return paces.map(() => minHeight);
   return paces.map((pace) => Math.round(minHeight + ((pace - bottom) / span) * (maxHeight - minHeight)));
+}
+
+export interface NineResult {
+  /** Strokes against par over the holes of this nine that were scored. */
+  toPar: number;
+  holes: number;
+  pace: number;
+}
+
+export interface RoundNines {
+  front: NineResult | null;
+  back: NineResult | null;
+}
+
+/**
+ * Each nine of a round on its own, so a front can be compared with a back.
+ *
+ * Halves are taken by position within the round rather than by hole number, so a scorecard
+ * that numbers its holes differently still splits into its first and second nine. A nine-hole
+ * round fills only the half it covers.
+ */
+export function roundNines(round: GolfRound): RoundNines {
+  const holes = getSegmentHoles(round.course ?? getCourse(round.courseId), round.segment);
+  const nine = (slice: typeof holes): NineResult | null => {
+    const scored = slice.filter((hole) => round.scores[hole.number] != null);
+    if (scored.length === 0) return null;
+    const toPar = scored.reduce((sum, hole) => sum + round.scores[hole.number] - hole.par, 0);
+    return { toPar, holes: scored.length, pace: toPar / scored.length };
+  };
+
+  if (holes.length >= 18) return { front: nine(holes.slice(0, 9)), back: nine(holes.slice(9)) };
+  const halves = litHalves(round.segment, holes.length);
+  return halves.back && !halves.front ? { front: null, back: nine(holes) } : { front: nine(holes), back: null };
+}
+
+/**
+ * Heights for both halves of every bar, on one scale shared by every nine on screen.
+ *
+ * Each half of an eighteen is a nine in its own right, so a front nine, a back nine and a
+ * nine-hole round are all measured the same way, and a worse back nine stands visibly taller
+ * than its front. A half that was not played takes the height of the half that was, so it
+ * still outlines as the missing half of the round.
+ */
+export function nineBarHeights(rounds: RoundNines[], minHeight = 14, maxHeight = 100): Array<{ front: number; back: number }> {
+  const paces = rounds.flatMap((round) => [round.front, round.back].flatMap((nine) => (nine ? [nine.pace] : [])));
+  const heights = paceHeights(paces, minHeight, maxHeight);
+  let next = 0;
+  return rounds.map((round) => {
+    let front: number | null = null;
+    let back: number | null = null;
+    if (round.front) {
+      front = heights[next];
+      next += 1;
+    }
+    if (round.back) {
+      back = heights[next];
+      next += 1;
+    }
+    return { front: front ?? back ?? minHeight, back: back ?? front ?? minHeight };
+  });
 }
 
 interface Rankable {

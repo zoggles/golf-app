@@ -7,7 +7,7 @@ import { useGolfData } from "@/hooks/use-golf-data";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { buildHistoryCsv, historyExportFilename } from "@/lib/history-export";
 import { buildRoundInsights, estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound, trackedRoundMetrics, type RoundSummary } from "@/lib/metrics";
-import { bestByFormat, describeFormatCounts, formatLabel, litHalves, pacePerHole, paceHeights } from "@/lib/round-format";
+import { bestByFormat, describeFormatCounts, formatLabel, nineBarHeights, pacePerHole, roundNines, type RoundNines } from "@/lib/round-format";
 import type { GolfRound, RoundSegment } from "@/lib/types";
 
 const shortDate = (date: string) => new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -35,7 +35,14 @@ export function ProgressPage() {
   const holesLogged = summaries.reduce((sum, round) => sum + round.holesPlayed, 0);
   const formatCounts = describeFormatCounts(summaries);
   const recent = summaries.slice(0, 6).reverse();
-  const recentHeights = paceHeights(recent.map((round) => pacePerHole(round.toPar, round.holesPlayed)));
+  // Each nine on its own, so an eighteen’s front and back can stand at different heights.
+  const recentNines: RoundNines[] = recent.map((round) => {
+    const saved = roundsById.get(round.id);
+    return saved
+      ? roundNines(saved)
+      : { front: { toPar: round.toPar, holes: round.holesPlayed, pace: pacePerHole(round.toPar, round.holesPlayed) }, back: null };
+  });
+  const recentBars = nineBarHeights(recentNines);
 
   const bestNote = (round: RoundSummary | null, format: string) =>
     round ? `${round.courseName} · ${shortDate(round.date)}` : `No ${format} rounds yet`;
@@ -86,19 +93,22 @@ export function ProgressPage() {
             <div className="trend-bars">
               {recent.map((round, index) => {
                 const segment = segmentOf(round.id);
-                const halves = litHalves(segment, round.holesPlayed);
-                const height = `${recentHeights[index]}px`;
+                const nines = recentNines[index];
+                const bars = recentBars[index];
+                const nineDetail = nines.front && nines.back
+                  ? `, front nine ${formatToPar(nines.front.toPar)}, back nine ${formatToPar(nines.back.toPar)}`
+                  : "";
                 return (
                   <Link
                     key={round.id}
                     href={`/rounds/${round.id}`}
                     className="trend-column"
-                    aria-label={`Open ${round.courseName}, ${formatLabel(segment, round.holesPlayed)}, ${formatToPar(round.toPar)} to par`}
+                    aria-label={`Open ${round.courseName}, ${formatLabel(segment, round.holesPlayed)}, ${formatToPar(round.toPar)} to par${nineDetail}`}
                   >
                     <span className="trend-score">{formatToPar(round.toPar)}</span>
                     <span className="trend-track" aria-hidden="true">
-                      <i className={halves.front ? "trend-half on" : "trend-half ghost"} style={{ height }} />
-                      <i className={halves.back ? "trend-half on" : "trend-half ghost"} style={{ height }} />
+                      <i className={nines.front ? "trend-half on" : "trend-half ghost"} style={{ height: `${bars.front}px` }} />
+                      <i className={nines.back ? "trend-half on" : "trend-half ghost"} style={{ height: `${bars.back}px` }} />
                     </span>
                     <span className="trend-round-meta">
                       <strong title={round.courseName}>{round.courseName}</strong>
@@ -108,7 +118,7 @@ export function ProgressPage() {
                 );
               })}
             </div>
-            <p className="trend-footnote">Bar height evens out 9 and 18 holes. Labels are what you shot.</p>
+            <p className="trend-footnote">Each half is one nine: on an 18, left is the front and right is the back. Labels are what you shot.</p>
           </section>
 
           <section className="history-section">
