@@ -21,7 +21,7 @@ export function PersonalProgressSection({ rounds }: { rounds: GolfRound[] }) {
       <div className="section-heading">
         <div>
           <h2>You vs you</h2>
-          <p>Par tells you how you compare to golf. This tells you whether you’re getting better, using only your own finished rounds.</p>
+          <p>An overall view across all courses. Course difficulty can affect these trends; use Progress by course above to compare the same course and tees.</p>
         </div>
       </div>
 
