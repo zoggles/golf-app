@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, CaretRight, FileArrowDown, FlagPennant, Gauge, TrendUp } from "@phosphor-icons/react";
+import { CourseTrends } from "@/components/course-trends";
 import { FormatMark } from "@/components/format-mark";
 import { PersonalProgressSection } from "@/components/personal-progress-section";
 import { useGolfData } from "@/hooks/use-golf-data";
@@ -9,7 +10,7 @@ import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { buildHistoryCsv, historyExportFilename } from "@/lib/history-export";
 import { buildRoundInsights, estimateHandicap, estimateRoundHandicap, formatToPar, scoringAverage, summarizeRound, trackedRoundMetrics, type RoundSummary } from "@/lib/metrics";
 import { buildRoundBaselines, historyBefore } from "@/lib/personal-baseline";
-import { bestByFormat, describeFormatCounts, formatLabel, nineBarHeights, pacePerHole, roundNines, type RoundNines } from "@/lib/round-format";
+import { bestByFormat, describeFormatCounts } from "@/lib/round-format";
 import { handicapGoingInto } from "@/lib/round-scorecard";
 import { personalHeadline } from "@/lib/round-story";
 import type { GolfRound, RoundSegment } from "@/lib/types";
@@ -38,16 +39,6 @@ export function ProgressPage() {
     : null;
   const holesLogged = summaries.reduce((sum, round) => sum + round.holesPlayed, 0);
   const formatCounts = describeFormatCounts(summaries);
-  const recent = summaries.slice(0, 6).reverse();
-  // Each nine on its own, so an eighteen’s front and back can stand at different heights.
-  const recentNines: RoundNines[] = recent.map((round) => {
-    const saved = roundsById.get(round.id);
-    return saved
-      ? roundNines(saved)
-      : { front: { toPar: round.toPar, holes: round.holesPlayed, pace: pacePerHole(round.toPar, round.holesPlayed) }, back: null };
-  });
-  const recentBars = nineBarHeights(recentNines);
-
   const bestNote = (round: RoundSummary | null, format: string) =>
     round ? `${round.courseName} · ${shortDate(round.date)}` : `No ${format} rounds yet`;
 
@@ -92,38 +83,7 @@ export function ProgressPage() {
             <Metric icon={<FlagPennant size={20} />} label="Rounds" value={String(completed.length)} note={formatCounts ?? `${holesLogged} ${holesLogged === 1 ? "hole" : "holes"} logged`} />
           </section>
 
-          <section className="trend-card surface-card">
-            <div className="section-heading"><div><h2>Scoring pace</h2></div><span>TO PAR</span></div>
-            <div className="trend-bars">
-              {recent.map((round, index) => {
-                const segment = segmentOf(round.id);
-                const nines = recentNines[index];
-                const bars = recentBars[index];
-                const nineDetail = nines.front && nines.back
-                  ? `, front nine ${formatToPar(nines.front.toPar)}, back nine ${formatToPar(nines.back.toPar)}`
-                  : "";
-                return (
-                  <Link
-                    key={round.id}
-                    href={`/rounds/${round.id}`}
-                    className="trend-column"
-                    aria-label={`Open ${round.courseName}, ${formatLabel(segment, round.holesPlayed)}, ${formatToPar(round.toPar)} to par${nineDetail}`}
-                  >
-                    <span className="trend-score">{formatToPar(round.toPar)}</span>
-                    <span className="trend-track" aria-hidden="true">
-                      <i className={nines.front ? "trend-half on" : "trend-half ghost"} style={{ height: `${bars.front}px` }} />
-                      <i className={nines.back ? "trend-half on" : "trend-half ghost"} style={{ height: `${bars.back}px` }} />
-                    </span>
-                    <span className="trend-round-meta">
-                      <strong title={round.courseName}>{round.courseName}</strong>
-                      <small><FormatMark segment={segment} holesPlayed={round.holesPlayed} label="short" /> · {shortDate(round.date)}</small>
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-            <p className="trend-footnote">Each half is one nine: on an 18, left is the front and right is the back. Labels are what you shot.</p>
-          </section>
+          <CourseTrends rounds={completed} />
 
           <PersonalProgressSection rounds={completed} />
 

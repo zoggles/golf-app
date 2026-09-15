@@ -809,3 +809,13 @@ html[data-live-round] .page-shell { padding-top: 18px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+.course-history > label { display: block; margin-bottom: 8px; font-weight: 650; }
+.course-history .course-select { margin-bottom: 20px; width: 100%; }
+.course-history-scroll { overflow-x: auto; padding: 12px 24px 0; }
+.course-history .score-trend-plot { height: 130px; }
+.course-history-dates { position: relative; height: 88px; margin: 12px 0 0; padding: 0; list-style: none; }
+.course-history-dates li { position: absolute; transform: translateX(-50%); text-align: center; }
+.course-history-dates a { display: flex; flex-direction: column; gap: 4px; min-width: 60px; padding: 4px; }
+.course-history-dates strong { font-size: 18px; }
+.course-history-dates small, .course-history-dates time { font-size: 11px; color: var(--muted); white-space: nowrap; }
