@@ -35,6 +35,23 @@ export function isSupabaseConfigured(): boolean {
   return Boolean(RAW_URL && SECRET_KEY);
 }
 
+/**
+ * Generates a few real, read-only database requests for Supabase's Free Plan
+ * activity window. The result is intentionally discarded and no application
+ * data is changed.
+ */
+export async function keepSupabaseActive(requestCount = 3): Promise<void> {
+  if (!Number.isInteger(requestCount) || requestCount < 1) {
+    throw new RangeError("requestCount must be a positive integer.");
+  }
+
+  await Promise.all(
+    Array.from({ length: requestCount }, () =>
+      rest<Array<{ id: string }>>("golfers?select=id&limit=1", { method: "GET" }),
+    ),
+  );
+}
+
 function endpoint(path: string): string {
   if (!isSupabaseConfigured()) throw new SupabaseConfigError();
   return `${RAW_URL.replace(/\/+$/, "")}/rest/v1/${path}`;

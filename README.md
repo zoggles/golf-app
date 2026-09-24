@@ -143,7 +143,21 @@ Set these locally in `.env.local` and in the Vercel project (all environments):
 ```
 SUPABASE_URL=https://jjalejuswitoysnxgvtc.supabase.co
 SUPABASE_SECRET_KEY=<Supabase dashboard → Project Settings → API Keys → secret>
+CRON_SECRET=<random string of at least 16 characters>
 ```
+
+### Keeping the free Supabase project active
+
+Vercel calls `/api/cron/keep-supabase-active` once per day from the production
+deployment. The protected endpoint performs three minimal, read-only database
+requests and does not change application data. This supplies the few daily user
+database requests Supabase currently recommends for keeping a Free Plan project
+out of its low-activity pause window.
+
+Set `CRON_SECRET` in the Vercel project's Production environment before deploying.
+Vercel automatically sends it as a bearer token to the scheduled endpoint. The
+schedule is defined in `vercel.json` and runs at approximately 15:17 UTC; Vercel
+Hobby schedules can run at any point during the selected hour.
 
 Schema changes belong in Supabase migrations, not in application code.
 
