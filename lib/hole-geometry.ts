@@ -22,6 +22,20 @@ export interface CourseHazard {
   radiusM: number;
 }
 
+/**
+ * Mapped tree cover: a wood or forest outline.
+ *
+ * Kept out of `hazards` on purpose. Android builds already on phones read `hazards` and
+ * treat any kind they do not know as water, so trees there would be drawn blue and laid up
+ * short of. A field those builds have never heard of is simply ignored.
+ */
+export interface TreeArea {
+  osmId: string;
+  outline: LatLng[];
+  centre: LatLng;
+  radiusM: number;
+}
+
 export interface OsmHoleGeometry {
   osmId: string;
   /** The OSM `ref` tag. Usually the hole number, but not reliably on multi-loop courses. */
@@ -45,6 +59,8 @@ export interface CourseGeometry {
   centre: LatLng;
   holes: OsmHoleGeometry[];
   hazards: CourseHazard[];
+  /** Absent on copies saved before tree cover was read, which is how those get refreshed. */
+  trees?: TreeArea[];
   source: "osm" | "manual";
   attribution: string;
   fetchedAt: string;

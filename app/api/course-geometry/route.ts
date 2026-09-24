@@ -89,6 +89,7 @@ function emptyGeometry(courseKey: string, fix: LatLng): CourseGeometry {
     centre: fix,
     holes: [],
     hazards: [],
+    trees: [],
     source: "manual",
     attribution: OSM_ATTRIBUTION,
     fetchedAt: new Date().toISOString(),

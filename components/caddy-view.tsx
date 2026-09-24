@@ -13,6 +13,7 @@ import {
 import { BagEditor } from "@/components/bag-editor";
 import { CaddyMap } from "@/components/caddy-map";
 import { ClubCallout } from "@/components/club-callout";
+import { ObstacleList } from "@/components/obstacle-list";
 import { useBag } from "@/hooks/use-bag";
 import { useCourseGeometry } from "@/hooks/use-course-geometry";
 import { usePlayerPosition } from "@/hooks/use-player-position";
@@ -21,6 +22,7 @@ import { captureGreen, ensureCourseGeometry, refreshCourseGeometry } from "@/lib
 import { courseKey } from "@/lib/course-key";
 import { metresToYards } from "@/lib/geo";
 import { playingHole, playingHoles } from "@/lib/hole-geometry";
+import { obstaclesAhead, obstaclesForShot, waterAdvice } from "@/lib/hole-obstacles";
 import { setCaddyViewPrefs } from "@/lib/caddy-view-prefs";
 import { detectHole, planShot } from "@/lib/shot-engine";
 import type { Course, Hole } from "@/lib/types";
@@ -83,14 +85,36 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
   }, [fix, key, course.holes]);
 
   const holeGeometry = geometry.bundle ? playingHole(geometry.bundle, hole.number) : null;
+  const hazards = geometry.bundle?.geometry.hazards ?? [];
+  const trees = geometry.bundle?.geometry.trees ?? [];
   const plan =
     holeGeometry && fix
       ? planShot({
           from: { lat: fix.lat, lng: fix.lng },
           hole: holeGeometry,
-          hazards: geometry.bundle?.geometry.hazards ?? [],
+          hazards,
           bag,
           accuracyM: fix.accuracyM,
+        })
+      : null;
+  const obstacles =
+    holeGeometry && fix && plan && !plan.onGreen
+      ? obstaclesForShot(obstaclesAhead({ from: { lat: fix.lat, lng: fix.lng }, hole: holeGeometry, hazards, trees }), {
+          targetYds: plan.targetYds,
+          longYds: plan.dispersion.longYds,
+          rollYds: plan.rollYds,
+        })
+      : [];
+  // A lay-up already says what it is laying up short of, so it gets no second line.
+  const advice =
+    fix && plan && !plan.onGreen && !plan.laidUp
+      ? waterAdvice({
+          from: { lat: fix.lat, lng: fix.lng },
+          target: plan.target,
+          targetYds: plan.targetYds,
+          rollYds: plan.rollYds,
+          dispersion: plan.dispersion,
+          hazards,
         })
       : null;
 
@@ -264,7 +288,8 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
             }}
             player={holeGeometry.tee}
             accuracyM={0}
-            hazards={geometry.bundle?.geometry.hazards ?? []}
+            hazards={hazards}
+            trees={trees}
             dimmed
           />
         ) : null}
@@ -274,7 +299,6 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
 
   const weak = fix.accuracyM > WEAK_FIX_M;
   const band = weak ? ` ±${Math.round(metresToYards(fix.accuracyM))}` : "";
-  const carryToClear = plan.carries.find((carry) => !carry.carried);
 
   return shell(
     <>
@@ -288,11 +312,7 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
         <p>
           {plan.onGreen
             ? "Putting from here. Distances are to the middle of the green."
-            : `${Math.round(plan.targetYds)}${band} yards to your target. ${plan.reason}${
-                carryToClear
-                  ? ` Carry the ${carryToClear.hazard.kind === "bunker" ? "bunker" : "water"} at ${Math.round(carryToClear.nearEdgeYds)}.`
-                  : ""
-              }`}
+            : `${Math.round(plan.targetYds)}${band} yards to your target. ${plan.reason}${advice ? ` ${advice}` : ""}`}
         </p>
       </div>
 
@@ -310,6 +330,8 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
           <strong>{Math.round(plan.green.backYds)}</strong>
         </div>
       </div>
+
+      <ObstacleList rows={obstacles} />
 
       {suggestedHole !== hole.number ? (
         <div className="caddy-hole-hint">
@@ -353,7 +375,8 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
           plan={plan}
           player={{ lat: fix.lat, lng: fix.lng }}
           accuracyM={fix.accuracyM}
-          hazards={geometry.bundle?.geometry.hazards ?? []}
+          hazards={hazards}
+          trees={trees}
         />
         <span className="caddy-expand-hint">
           {expanded ? <X size={13} weight="bold" /> : <ArrowsOutSimple size={13} weight="bold" />}
@@ -362,8 +385,8 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
       </button>
 
       <p className="caddy-attribution">
-        Hole map: {geometry.bundle?.geometry.attribution}. Aiming at the centre of the green,
-        not the pin.
+        Hole map and hazards: {geometry.bundle?.geometry.attribution}. Not every tree or bunker
+        is mapped. Aiming at the centre of the green, not the pin.
       </p>
       <button
         type="button"

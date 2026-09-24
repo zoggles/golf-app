@@ -35,6 +35,7 @@ function bundle(mapped: number): CourseGeometryBundle {
       centre: POINT,
       holes,
       hazards: [],
+      trees: [],
       source: mapped ? "osm" : "manual",
       attribution: "© OpenStreetMap contributors",
       fetchedAt: "2026-09-14T12:00:00.000Z",
@@ -42,6 +43,11 @@ function bundle(mapped: number): CourseGeometryBundle {
     holeMap: Object.fromEntries(holes.map((item, index) => [index + 1, item.osmId])),
     matchedBy: mapped ? "gps" : "manual",
   };
+}
+
+function withObstacles(copy: CourseGeometryBundle): CourseGeometryBundle {
+  const wood = { osmId: "way/9", outline: [POINT, POINT, POINT], centre: POINT, radiusM: 10 };
+  return { ...copy, geometry: { ...copy.geometry, trees: [wood] } };
 }
 
 function reply(body: unknown, ok = true) {
@@ -156,6 +162,30 @@ describe("refreshCourseGeometry", () => {
     await cache.refreshCourseGeometry(KEY, 18);
 
     expect(cache.readGeometryState(KEY).status).toBe("ready");
+  });
+
+  it("upgrades a complete copy saved before water and trees were read", async () => {
+    const before = bundle(18);
+    delete before.geometry.trees;
+    storage.set(`caddy-stack:geometry:v1:${KEY}`, JSON.stringify(before));
+    fetchMock.mockReturnValue(reply({ bundle: withObstacles(bundle(18)) }));
+    const cache = await session();
+
+    await cache.refreshCourseGeometry(KEY, 18);
+
+    expect(cache.readGeometryState(KEY).bundle?.geometry.trees).toHaveLength(1);
+  });
+
+  it("keeps a copy saved before obstacles when the server has nothing better", async () => {
+    const before = bundle(18);
+    delete before.geometry.trees;
+    storage.set(`caddy-stack:geometry:v1:${KEY}`, JSON.stringify(before));
+    fetchMock.mockReturnValue(reply({ bundle: bundle(16) }));
+    const cache = await session();
+
+    await cache.refreshCourseGeometry(KEY, 18);
+
+    expect(cache.mappedHoleCount(cache.readGeometryState(KEY).bundle)).toBe(18);
   });
 
   it("keeps what it has when offline", async () => {

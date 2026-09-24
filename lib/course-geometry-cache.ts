@@ -10,8 +10,9 @@ import type { ScorecardHole } from "./osm-normalize";
  *
  * Not scoped by golfer: a green is in the same place for everyone, so this follows the
  * shared-catalogue treatment courses already get. A complete copy never expires either — a
- * golf hole does not move. A copy with gaps is the exception: it is checked again, because the
- * server may since have learned the holes it was missing.
+ * golf hole does not move. Two kinds of copy are checked again: one with gaps, because the
+ * server may since have learned the holes it was missing, and one saved before water and trees
+ * were read, which has every hole but none of what lies beside them.
  *
  * This is what lets the map work in a dead zone. GPS itself needs no network, so once the
  * course is cached the whole feature runs offline.
@@ -76,6 +77,23 @@ export function mappedHoleCount(bundle: CourseGeometryBundle | null): number {
   return Object.values(bundle.holeMap).filter((osmId) => present.has(osmId)).length;
 }
 
+/** Saved before obstacles were read: it can draw the holes, but not the water and trees beside them. */
+export function predatesObstacles(bundle: CourseGeometryBundle | null): boolean {
+  return bundle !== null && bundle.geometry.trees === undefined;
+}
+
+/**
+ * Whether a copy from the server is better than the one on the phone. More holes always wins
+ * and fewer never does; with the same holes, a copy that knows the obstacles beats one that
+ * does not.
+ */
+function improvesOn(incoming: CourseGeometryBundle, existing: CourseGeometryBundle | null): boolean {
+  if (!existing) return true;
+  const gained = mappedHoleCount(incoming) - mappedHoleCount(existing);
+  if (gained !== 0) return gained > 0;
+  return predatesObstacles(existing) && !predatesObstacles(incoming);
+}
+
 function statusFor(bundle: CourseGeometryBundle): GeometryStatus {
   return bundle.geometry.holes.length > 0 ? "ready" : "unmapped";
 }
@@ -125,12 +143,13 @@ export async function ensureCourseGeometry(input: EnsureGeometryInput): Promise<
   if (inFlight.has(courseKey)) return;
 
   const incomplete = existing.bundle !== null && mappedHoleCount(existing.bundle) < input.holes.length;
-  if (existing.bundle && (!incomplete || rechecked.has(courseKey))) return;
+  const needsLook = incomplete || predatesObstacles(existing.bundle);
+  if (existing.bundle && (!needsLook || rechecked.has(courseKey))) return;
 
   const failedAt = lastFailureAt.get(courseKey);
   if (failedAt && Date.now() - failedAt < RETRY_AFTER_MS) return;
 
-  if (incomplete) rechecked.add(courseKey);
+  if (needsLook) rechecked.add(courseKey);
   inFlight.add(courseKey);
   if (!existing.bundle) publish(courseKey, { bundle: null, status: "loading", error: null });
 
@@ -172,13 +191,14 @@ export async function ensureCourseGeometry(input: EnsureGeometryInput): Promise<
  * Downloads a course's hole map ahead of play.
  *
  * Needs no position, because it only reads what the server already holds, so it runs the
- * moment a round opens: at home on Wi-Fi, before the first tee and any dead zone. A copy that
- * already has every hole is left alone, and nothing replaces a copy with one that knows fewer.
+ * moment a round opens: at home on Wi-Fi, before the first tee and any dead zone. A copy with
+ * every hole and its obstacles is left alone, and nothing replaces a copy with one that knows
+ * fewer holes.
  */
 export async function refreshCourseGeometry(courseKey: string, holeCount: number): Promise<void> {
   if (typeof window === "undefined" || refreshed.has(courseKey) || inFlight.has(courseKey)) return;
   const existing = readGeometryState(courseKey);
-  if (existing.bundle && mappedHoleCount(existing.bundle) >= holeCount) return;
+  if (existing.bundle && mappedHoleCount(existing.bundle) >= holeCount && !predatesObstacles(existing.bundle)) return;
 
   try {
     const response = await fetch(apiUrl(`/api/course-geometry?courseKey=${encodeURIComponent(courseKey)}`), {
@@ -188,7 +208,7 @@ export async function refreshCourseGeometry(courseKey: string, holeCount: number
     if (!response.ok) return;
     refreshed.add(courseKey);
     const result = (await response.json()) as { bundle?: CourseGeometryBundle | null };
-    if (result.bundle && mappedHoleCount(result.bundle) > mappedHoleCount(existing.bundle)) {
+    if (result.bundle && improvesOn(result.bundle, existing.bundle)) {
       lastFailureAt.delete(courseKey);
       adopt(result.bundle);
     }

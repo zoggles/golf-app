@@ -10,7 +10,7 @@ import {
   type ViewFrame,
 } from "@/lib/caddy-view-frame";
 import { destination, yardsToMetres } from "@/lib/geo";
-import type { CourseHazard, LatLng, PlayingHoleGeometry } from "@/lib/hole-geometry";
+import type { CourseHazard, LatLng, PlayingHoleGeometry, TreeArea } from "@/lib/hole-geometry";
 import type { ShotPlan } from "@/lib/shot-engine";
 
 /**
@@ -28,6 +28,8 @@ interface CaddyMapProps {
   player: LatLng;
   accuracyM: number;
   hazards: CourseHazard[];
+  /** Mapped tree cover, drawn beneath the hazards. */
+  trees: TreeArea[];
   /** Drawn faintly, with no player or shot, while waiting for a first fix. */
   dimmed?: boolean;
 }
@@ -91,7 +93,7 @@ function hazardClass(kind: CourseHazard["kind"]): string {
   return "caddy-hazard water";
 }
 
-export function CaddyMap({ hole, plan, player, accuracyM, hazards, dimmed = false }: CaddyMapProps) {
+export function CaddyMap({ hole, plan, player, accuracyM, hazards, trees, dimmed = false }: CaddyMapProps) {
   const group = useRef<SVGGElement | null>(null);
   const arc = useRef<SVGPathElement | null>(null);
   const ball = useRef<SVGCircleElement | null>(null);
@@ -135,6 +137,7 @@ export function CaddyMap({ hole, plan, player, accuracyM, hazards, dimmed = fals
         radius: scaleM(frame, hazard.radiusM),
         outline: hazard.outline.length >= 3 ? hazard.outline.map(at) : null,
       })),
+      trees: trees.filter((area) => area.outline.length >= 3).map((area) => ({ id: area.osmId, outline: area.outline.map(at) })),
       // Capped so a bad fix still reads as uncertainty rather than covering the hole. The
       // exact figure stays honest in the yardage band and the warning line beneath.
       haloRadius: clampRadius(scaleM(frame, accuracyM), 4, MAX_HALO_UNITS),
@@ -144,7 +147,7 @@ export function CaddyMap({ hole, plan, player, accuracyM, hazards, dimmed = fals
       // holes on most courses.
       corridorWidth: Math.max(8, scaleM(frame, 45)),
     };
-  }, [hole, plan, player, accuracyM, hazards]);
+  }, [hole, plan, player, accuracyM, hazards, trees]);
 
   const shotD = shotPath(scene.from, scene.to, scene.bowRatio);
   const spreadAngle = (Math.atan2(scene.to.x - scene.from.x, scene.from.y - scene.to.y) * 180) / Math.PI;
@@ -222,6 +225,10 @@ export function CaddyMap({ hole, plan, player, accuracyM, hazards, dimmed = fals
         }}
       >
         <path className="caddy-fairway" d={toPath(scene.centreline)} strokeWidth={scene.corridorWidth} />
+
+        {scene.trees.map((area) => (
+          <path key={area.id} className="caddy-trees" d={toPath(area.outline, true)} />
+        ))}
 
         {scene.hazards.map((item) =>
           item.outline ? (

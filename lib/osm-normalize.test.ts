@@ -213,7 +213,7 @@ describe("hazards", () => {
   const { tee, greenCentre } = straightHole(ORIGIN, 0, 320);
   const hole = holeWay([tee, greenCentre], { ref: "1", par: "4" });
 
-  it("stores bunkers as a circle and water as an outline", () => {
+  it("keeps the shape of bunkers and water", () => {
     const result = normalizeOsmCourse({
       elements: [
         greenWay(greenCentre),
@@ -227,10 +227,43 @@ describe("hazards", () => {
 
     const bunker = result.geometry.hazards.find((item) => item.kind === "bunker");
     const water = result.geometry.hazards.find((item) => item.kind === "water");
-    expect(bunker?.outline).toEqual([]);
+    expect(bunker?.outline.length).toBeGreaterThan(2);
     expect(bunker?.radiusM).toBeGreaterThan(6);
     expect(water?.outline.length).toBeGreaterThan(2);
-    expect(water?.outline.length).toBeLessThanOrEqual(16);
+  });
+
+  const plain = (centre: LatLng, radiusM: number, tags: Record<string, string>): OverpassElement => {
+    const ring = Array.from({ length: 10 }, (_unused, index) => node(destination(centre, (index * 360) / 10, radiusM)));
+    return { type: "way", id: nextId++, tags, geometry: [...ring, ring[0]] };
+  };
+  const obstaclesOf = (...extra: OverpassElement[]) =>
+    normalizeOsmCourse({ elements: [greenWay(greenCentre), hole, ...extra], fix: ORIGIN, holes: [card(1, 4, 350, 1)] }).geometry;
+
+  it("counts a pond tagged only as a pond as water", () => {
+    const pond = plain(destination(destination(tee, 0, 150), 90, 30), 15, { natural: "water", water: "pond" });
+    expect(obstaclesOf(pond).hazards.map((item) => item.kind)).toEqual(["water"]);
+  });
+
+  it("leaves out water that may be dry on the day", () => {
+    const beside = destination(destination(tee, 0, 150), 90, 30);
+    expect(obstaclesOf(plain(beside, 15, { natural: "water", intermittent: "yes" })).hazards).toEqual([]);
+    expect(obstaclesOf(plain(beside, 15, { natural: "water", water: "basin" })).hazards).toEqual([]);
+  });
+
+  it("leaves out water drawn over the green", () => {
+    expect(obstaclesOf(plain(greenCentre, 40, { natural: "water" })).hazards).toEqual([]);
+  });
+
+  it("keeps trees beside the hole apart from the hazards", () => {
+    const wood = plain(destination(destination(tee, 0, 150), 90, 40), 20, { natural: "wood" });
+    const geometry = obstaclesOf(wood);
+    expect(geometry.hazards).toEqual([]);
+    expect(geometry.trees).toHaveLength(1);
+  });
+
+  it("leaves out a wood drawn over the fairway", () => {
+    const wood = plain(destination(tee, 0, 160), 90, { natural: "wood" });
+    expect(obstaclesOf(wood).trees).toEqual([]);
   });
 
   it("drops hazards that are nowhere near the hole", () => {

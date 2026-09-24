@@ -5,10 +5,12 @@ import {
   localProjection,
   nearestPointOnPath,
   pathLengthM,
+  pointAlongPath,
   pointInPolygon,
   polygonCentroid,
   polygonRadiusM,
   simplifyPath,
+  simplifyWithin,
   yardsToMetres,
 } from "./geo";
 import type {
@@ -18,6 +20,7 @@ import type {
   HoleMap,
   LatLng,
   OsmHoleGeometry,
+  TreeArea,
 } from "./hole-geometry";
 import { OSM_ATTRIBUTION } from "./hole-geometry";
 import type { OverpassElement } from "./overpass";
@@ -27,7 +30,13 @@ import { normalizeTee } from "./tee-selection";
 
 const MAX_CENTRELINE_POINTS = 12;
 const MAX_GREEN_POINTS = 24;
-const MAX_HAZARD_POINTS = 16;
+/**
+ * Hazard and tree outlines are drawn and measured against, so they are simplified to a
+ * tolerance, never to a point budget. Squeezing a riverbank into sixteen points would move
+ * its edge tens of metres; this keeps every edge within a few metres of the mapped one.
+ */
+const OUTLINE_TOLERANCES_M = [1, 2, 3];
+const OUTLINE_TARGET_POINTS = 48;
 /** Beyond this a "nearby" green belongs to a different hole, so treat the hole as green-less. */
 const GREEN_MATCH_LIMIT_M = 60;
 /** Half the depth of a typical green, used when OSM mapped the hole but not the putting surface. */
@@ -41,6 +50,11 @@ const HAZARD_KINDS: Record<string, HazardKind> = {
   bunker: "bunker",
   out_of_bounds: "out_of_bounds",
 };
+
+/** Water that may be dry on the day, or is not open water at all. */
+const UNRELIABLE_WATER = new Set(["basin", "wastewater", "fountain", "reflecting_pool"]);
+/** More than this share of a hole's line inside a wood means the wood was drawn over the fairway. */
+const MAX_LINE_INSIDE_TREES = 0.2;
 
 export interface ScorecardHole {
   number: number;
@@ -210,17 +224,74 @@ function nearestGreen(
   return best;
 }
 
+function faithfulOutline(points: LatLng[]): LatLng[] {
+  let outline = points;
+  for (const toleranceM of OUTLINE_TOLERANCES_M) {
+    outline = simplifyWithin(points, toleranceM);
+    if (outline.length <= OUTLINE_TARGET_POINTS) break;
+  }
+  return outline;
+}
+
 /**
- * Keeps only hazards that come into play, and stores bunkers as a circle.
+ * What a feature is, as a hazard. A golf mapper's tag wins; failing that, standing water is
+ * water, because a pond beside a fairway is often only mapped as a pond.
+ */
+function hazardKindOf(tags: Record<string, string> | undefined): HazardKind | null {
+  if (!tags) return null;
+  const golfKind = HAZARD_KINDS[tags.golf ?? ""];
+  if (golfKind) return golfKind;
+  if (tags.natural !== "water") return null;
+  if (tags.intermittent === "yes" || tags.seasonal === "yes" || tags.covered === "yes" || tags.tunnel) return null;
+  if (UNRELIABLE_WATER.has(tags.water ?? "")) return null;
+  return "water";
+}
+
+function isTreeCover(tags: Record<string, string> | undefined): boolean {
+  return tags?.natural === "wood" || tags?.landuse === "forest";
+}
+
+/** Nearest approach of an outline to a line, or zero where the line runs through it. */
+function outlineDistanceToPathM(outline: LatLng[], path: LatLng[]): number {
+  let best = Infinity;
+  for (const point of outline) best = Math.min(best, nearestPointOnPath(path, point).distanceM);
+  for (const point of path) {
+    if (pointInPolygon(point, outline)) return 0;
+    best = Math.min(best, nearestPointOnPath(outline, point).distanceM);
+  }
+  return best;
+}
+
+const LINE_SAMPLES = 40;
+
+function shareOfLineInside(path: LatLng[], outline: LatLng[]): number {
+  const lengthM = pathLengthM(path);
+  if (lengthM < 1) return 0;
+  let inside = 0;
+  for (let step = 0; step <= LINE_SAMPLES; step += 1) {
+    if (pointInPolygon(pointAlongPath(path, (lengthM * step) / LINE_SAMPLES), outline)) inside += 1;
+  }
+  return inside / (LINE_SAMPLES + 1);
+}
+
+/**
+ * A water or tree outline sitting on a green or a tee was drawn carelessly, since nobody
+ * putts on a pond. Leaving it in would put an obstacle where there is none, so it goes.
+ */
+function coversPlayingSurface(outline: LatLng[], holes: OsmHoleGeometry[]): boolean {
+  return holes.some((hole) => pointInPolygon(hole.greenCentre, outline) || pointInPolygon(hole.tee, outline));
+}
+
+/**
+ * Keeps only hazards that come into play.
  *
- * Duran alone maps 108 bunkers and 52 rough polygons; keeping every outline would put a
- * quarter of a megabyte into localStorage for one course. At the zoom the map draws at, a
- * bunker circle is indistinguishable from its outline.
+ * In play is judged against this course's own holes, not against whose outline the hazard
+ * sits in. A pond between two courses in the same park is in play on both.
  */
 function readHazards(elements: OverpassElement[], holes: OsmHoleGeometry[]): CourseHazard[] {
   const hazards: CourseHazard[] = [];
   for (const element of elements) {
-    const kind = HAZARD_KINDS[element.tags?.golf ?? ""];
+    const kind = hazardKindOf(element.tags);
     if (!kind) continue;
     const outline = geometryOf(element);
     if (outline.length < 3) continue;
@@ -231,16 +302,49 @@ function readHazards(elements: OverpassElement[], holes: OsmHoleGeometry[]): Cou
       (hole) => nearestPointOnPath(hole.centreline, centre).distanceM - radiusM <= HAZARD_CORRIDOR_M,
     );
     if (!inPlay) continue;
+    if (kind !== "out_of_bounds" && coversPlayingSurface(outline, holes)) continue;
 
-    hazards.push({
-      osmId: elementRef(element),
-      kind,
-      outline: kind === "bunker" ? [] : simplifyPath(outline, MAX_HAZARD_POINTS),
-      centre,
-      radiusM,
-    });
+    hazards.push({ osmId: elementRef(element), kind, outline: faithfulOutline(outline), centre, radiusM });
   }
   return hazards;
+}
+
+/** Hazards and trees for holes already known, so a cached course can gain them without re-matching. */
+export function readCourseObstacles(
+  elements: OverpassElement[],
+  holes: OsmHoleGeometry[],
+): { hazards: CourseHazard[]; trees: TreeArea[] } {
+  return { hazards: readHazards(elements, holes), trees: readTrees(elements, holes) };
+}
+
+/**
+ * Wood and forest outlines beside this course's holes.
+ *
+ * Trees are only as complete as the local mappers made them: a clump drawn is a clump that
+ * is there, but a tree not drawn is not a gap. Nothing downstream may read their absence as
+ * a clear line.
+ */
+function readTrees(elements: OverpassElement[], holes: OsmHoleGeometry[]): TreeArea[] {
+  const trees: TreeArea[] = [];
+  for (const element of elements) {
+    if (!isTreeCover(element.tags)) continue;
+    const outline = geometryOf(element);
+    if (outline.length < 4) continue;
+
+    const inPlay = holes.some((hole) => outlineDistanceToPathM(outline, hole.centreline) <= HAZARD_CORRIDOR_M);
+    if (!inPlay) continue;
+    if (coversPlayingSurface(outline, holes)) continue;
+    if (holes.some((hole) => shareOfLineInside(hole.centreline, outline) > MAX_LINE_INSIDE_TREES)) continue;
+
+    const centre = polygonCentroid(outline);
+    trees.push({
+      osmId: elementRef(element),
+      outline: faithfulOutline(outline),
+      centre,
+      radiusM: polygonRadiusM(outline, centre),
+    });
+  }
+  return trees;
 }
 
 interface CourseCandidate {
@@ -455,9 +559,8 @@ export function normalizeOsmCourse(input: NormalizeInput): NormalizeResult {
         (namedByScorecard && !chosen.outline && matchesScorecard(hole, input.holes)))
     : allHoles;
 
-  const hazards = readHazards(input.elements, holes).filter(
-    (hazard) => !chosen || belongsToCourse(hazard.centre, chosen, candidates),
-  );
+  const hazards = readHazards(input.elements, holes);
+  const trees = readTrees(input.elements, holes);
   const holeMap = assignHoles(holes, input.holes);
 
   return {
@@ -467,6 +570,7 @@ export function normalizeOsmCourse(input: NormalizeInput): NormalizeResult {
       centre: identity.centre,
       holes,
       hazards,
+      trees,
       source: "osm",
       attribution: OSM_ATTRIBUTION,
       fetchedAt: new Date().toISOString(),

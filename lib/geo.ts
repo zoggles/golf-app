@@ -241,6 +241,11 @@ function douglasPeucker(points: LatLng[], toleranceM: number): LatLng[] {
   return [...left.slice(0, -1), ...right];
 }
 
+/** Ramer-Douglas-Peucker alone: every dropped point stays within the tolerance of the result. */
+export function simplifyWithin(points: LatLng[], toleranceM: number): LatLng[] {
+  return douglasPeucker(points, toleranceM);
+}
+
 /**
  * Ramer-Douglas-Peucker, then a hard cap. Endpoints always survive, so an oriented
  * centreline keeps both its tee and its green.

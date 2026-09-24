@@ -397,6 +397,7 @@ a { color: inherit; text-decoration: none; }
 .caddy-hazard.water { fill: rgba(96,150,214,.34); stroke: rgba(126,178,235,.5); }
 .caddy-hazard.bunker { fill: rgba(219,209,184,.28); stroke: rgba(219,209,184,.42); }
 .caddy-hazard.ob { fill: rgba(242,156,135,.13); stroke: rgba(242,156,135,.36); }
+.caddy-trees { fill: rgba(38,84,48,.62); stroke: rgba(96,148,98,.5); stroke-width: .6; }
 .caddy-green-shape { fill: rgba(173,240,95,.3); stroke: rgba(198,247,140,.85); stroke-width: 1.1; }
 .caddy-centreline { fill: none; stroke: var(--faint); stroke-width: .8; stroke-dasharray: 3 5; opacity: .5; }
 .caddy-shot-arc { fill: none; stroke: var(--green); stroke-width: 2.6; stroke-linecap: round; }
@@ -435,6 +436,18 @@ a { color: inherit; text-decoration: none; }
 .caddy-pin-capture { padding: 24px 18px 0; text-align: center; color: var(--green); }
 .caddy-pin-capture p { margin: 12px 0 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .caddy-pin-capture .club-callout { margin-top: 18px; text-align: left; }
+.caddy-obstacles { border-top: 1px solid var(--line); padding: 10px 18px 12px; }
+.caddy-obstacles-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.caddy-obstacles small { color: var(--faint); font-size: 9px; letter-spacing: .14em; }
+.caddy-obstacles ul { margin: 0; padding: 0; list-style: none; }
+.caddy-obstacles li { display: flex; align-items: center; gap: 9px; padding: 5px 0; font-size: 14px; }
+.caddy-obstacle-name { flex: 1; color: var(--muted); }
+.caddy-obstacles li strong { font-variant-numeric: tabular-nums; font-size: 16px; }
+.caddy-obstacle-mark { flex-shrink: 0; width: 10px; height: 10px; border-radius: 3px; }
+.caddy-obstacle-mark.water { background: rgba(126,178,235,.85); }
+.caddy-obstacle-mark.bunker { background: var(--sand); }
+.caddy-obstacle-mark.trees { background: rgba(96,148,98,.95); }
+.caddy-obstacle-mark.out_of_bounds { background: rgba(242,156,135,.8); }
 .caddy-attribution { margin: 0; padding: 12px 18px 0; color: var(--faint); font-size: 9px; line-height: 1.5; }
 .caddy-inline-off { display: block; width: 100%; padding: 12px; margin-top: 10px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--faint); font-size: 11px; cursor: pointer; }
 .caddy-bag { margin-bottom: 22px; }
@@ -516,6 +529,10 @@ html[data-live-round] .page-shell { padding-top: 18px; }
 .live-round .caddy-status button { min-height: 44px; border: 2px solid var(--field-control-edge); background: var(--field-control); color: var(--ink); font-weight: 700; }
 .live-round .caddy-expand-hint { padding: 7px 11px; border: 1px solid var(--field-control-edge); background: rgba(8,17,12,.86); color: var(--ink); font-size: 12px; }
 .live-round .caddy-attribution { color: var(--field-label); }
+.live-round .caddy-obstacles small { color: var(--field-label); font-size: 11px; font-weight: 700; }
+.live-round .caddy-obstacles li { font-size: 16px; }
+.live-round .caddy-obstacle-name { color: var(--field-label); }
+.live-round .caddy-obstacles li strong { font-size: 20px; }
 .live-round .caddy-inline-off { min-height: 48px; color: var(--field-label); font-size: 13px; }
 
 .live-round .score-grid { border: 2px solid rgba(243,241,232,.22); }

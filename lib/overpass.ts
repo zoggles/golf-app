@@ -47,7 +47,13 @@ export function courseAndHolesQuery(lat: number, lng: number): string {
     // folds the two copies of each course back into one.
     ".course out tags center;",
     ".course out tags geom;",
-    `way["golf"](around:1400,${fix})->.features;`,
+    // Water and woods are mapped by far more people than golf hazards are, so a pond is often
+    // only tagged as a pond. The normaliser keeps the ones that sit beside a hole.
+    "(",
+    `  way["golf"](around:1400,${fix});`,
+    `  way["natural"~"^(water|wood)$"](around:1400,${fix});`,
+    `  way["landuse"="forest"](around:1400,${fix});`,
+    ")->.features;",
     ".features out tags geom;",
   ].join("\n");
 }

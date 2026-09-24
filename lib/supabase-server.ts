@@ -1,6 +1,6 @@
 import type { Golfer } from "./golfers";
 import type { Course, GolfData, GolfRound, Hole, RoundEvent, RoundSegment, RoundStatus } from "./types";
-import type { CourseGeometry, CourseGeometryBundle, CourseHazard, HoleMap, OsmHoleGeometry } from "./hole-geometry";
+import type { CourseGeometry, CourseGeometryBundle, CourseHazard, HoleMap, OsmHoleGeometry, TreeArea } from "./hole-geometry";
 
 /**
  * Server-only Supabase access.
@@ -383,6 +383,8 @@ interface CourseGeometryRow {
   centre_lng: number;
   holes: OsmHoleGeometry[];
   hazards: CourseHazard[];
+  /** Missing on rows read before the column existed. */
+  trees?: TreeArea[] | null;
   source: "osm" | "manual";
   attribution: string;
   fetched_at: string;
@@ -403,6 +405,7 @@ function geometryFromRow(row: CourseGeometryRow): CourseGeometry {
     centre: { lat: row.centre_lat, lng: row.centre_lng },
     holes: row.holes ?? [],
     hazards: row.hazards ?? [],
+    trees: row.trees ?? [],
     source: row.source,
     attribution: row.attribution,
     fetchedAt: row.fetched_at,
@@ -417,6 +420,7 @@ function geometryToRow(geometry: CourseGeometry): CourseGeometryRow & { updated_
     centre_lng: geometry.centre.lng,
     holes: geometry.holes,
     hazards: geometry.hazards,
+    trees: geometry.trees ?? [],
     source: geometry.source,
     attribution: geometry.attribution,
     fetched_at: geometry.fetchedAt,
