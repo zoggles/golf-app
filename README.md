@@ -7,7 +7,7 @@ A mobile-first, voice-friendly golf round tracker. Golfers, rounds, and course s
 - Sign in with Google; every round is private to that verified account
 - Select a saved course, tee, and front nine, back nine, or full round; no course is selected by default
 - Prepare courses and their scorecards before heading out; look up additional tees when needed
-- Preloaded official white-tee scorecard for Genesee Valley Golf Course — South
+- Preloaded official white-tee scorecard for Genesee Valley Golf Course — South, with North's white-tee card and hole map in the shared course catalogue
 - Record until you tap stop, with pauses allowed while you think
 - Update current or past holes with general requests, including several corrections at once
 - Manual one-handed score entry and complete scorecard
@@ -149,7 +149,7 @@ Schema changes belong in Supabase migrations, not in application code.
 
 ## Course data
 
-Genesee Valley South white-tee data comes from the [Monroe County Parks Golf scorecard](https://monroecountyparksgolf.com/wp-content/uploads/2023/02/Genesee-Valley-S-N-6x12_23-v6-02.14-proof.pdf). Newly researched courses keep their source URL alongside a browser-local course snapshot. Club suggestions are general distance-based guidance, not personalized recommendations.
+Genesee Valley South and North white-tee data comes from the [Monroe County Parks Golf scorecard](https://monroecountyparksgolf.com/wp-content/uploads/2023/02/Genesee-Valley-S-N-6x12_23-v6-02.14-proof.pdf). Newly researched courses keep their source URL alongside a browser-local course snapshot. Club suggestions are general distance-based guidance, not personalized recommendations.
 
 ### Hole geometry
 

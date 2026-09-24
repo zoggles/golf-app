@@ -309,6 +309,16 @@ export function distinctiveCourseName(name: string): string {
     .join(" ");
 }
 
+/**
+ * Whether two names say these are different courses. A blank name, such as a green captured by
+ * hand, says nothing either way.
+ */
+export function namesDifferentCourse(wanted: string, candidate: string): boolean {
+  const left = distinctiveCourseName(wanted);
+  const right = distinctiveCourseName(candidate);
+  return Boolean(left && right) && left !== right;
+}
+
 function readCourseIdentity(
   elements: OverpassElement[],
   fix: LatLng,

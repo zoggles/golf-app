@@ -4,7 +4,7 @@ import type { LatLng } from "./hole-geometry";
 import { ARROWHEAD_ELEMENTS } from "./__fixtures__/arrowhead-spencerport";
 import { DURAND_EASTMAN_ELEMENTS } from "./__fixtures__/durand-eastman";
 import { GENESEE_VALLEY_ELEMENTS, GENESEE_VALLEY_OUTLINES } from "./__fixtures__/genesee-valley";
-import { assignHoles, normalizeOsmCourse, type ScorecardHole } from "./osm-normalize";
+import { assignHoles, namesDifferentCourse, normalizeOsmCourse, type ScorecardHole } from "./osm-normalize";
 import type { OverpassElement } from "./overpass";
 
 const ORIGIN: LatLng = { lat: 43.2328, lng: -77.5719 };
@@ -485,6 +485,37 @@ describe("two courses sharing a park", () => {
     });
     expect(result.holeMap).toEqual(SOUTH_WAYS);
     expect(result.geometry.holes.map((hole) => hole.osmId).sort()).toEqual(Object.values(SOUTH_WAYS).sort());
+  });
+
+  it("resolves North's eighteen from North's first tee", () => {
+    // North's White card from the county scorecard.
+    const NORTH_WHITE = [
+      [1, 5, 492, 1], [2, 4, 287, 15], [3, 4, 330, 13], [4, 3, 146, 17], [5, 5, 456, 5], [6, 3, 217, 9],
+      [7, 4, 398, 3], [8, 4, 393, 7], [9, 3, 197, 11], [10, 4, 413, 6], [11, 4, 348, 12], [12, 3, 164, 16],
+      [13, 5, 467, 2], [14, 4, 408, 8], [15, 5, 500, 4], [16, 4, 410, 10], [17, 4, 310, 14], [18, 3, 150, 18],
+    ].map(([number, par, yards, handicap]) => card(number, par, yards, handicap));
+    const NORTH_WAYS = Object.fromEntries(
+      [755647842, 1137311282, 1137311283, 1137311284, 1137311286, 1137311287, 1137311288, 1137311289, 1137311290,
+        1137311291, 1137311292, 1154641308, 1154641309, 1154641312, 1154641313, 1154641314, 1154641315, 1154641316]
+        .map((id, index) => [index + 1, `way/${id}`]),
+    );
+    const result = normalizeOsmCourse({
+      elements: [...GENESEE_VALLEY_ELEMENTS, ...GENESEE_VALLEY_OUTLINES],
+      fix: { lat: 43.1144, lng: -77.6517 },
+      holes: NORTH_WHITE,
+      courseName: "genesee valley golf course north",
+    });
+    expect(result.geometry.name).toBe("Genesee Valley Golf Course North");
+    expect(result.holeMap).toEqual(NORTH_WAYS);
+    expect(result.geometry.holes.every((hole) => hole.greenPolygon !== null)).toBe(true);
+  });
+
+  it("does not take a neighbour's cached map for this course", () => {
+    expect(namesDifferentCourse("genesee valley golf course north", "Genesee Valley Golf Course South")).toBe(true);
+    expect(namesDifferentCourse("genesee valley golf course south", "Genesee Valley Golf Course South")).toBe(false);
+    expect(namesDifferentCourse("arrowhead golf course marina", "Arrowhead Golf Course & Marina")).toBe(false);
+    // A map of greens captured by hand has no name to go on.
+    expect(namesDifferentCourse("genesee valley golf course north", "")).toBe(false);
   });
 
   it("folds a course's centre and outline together when they arrive separately", () => {

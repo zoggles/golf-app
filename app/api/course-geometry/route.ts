@@ -4,7 +4,7 @@ import { bearingDeg, destination, haversineM } from "@/lib/geo";
 import { parseGeometryPin, parseGeometryResolve } from "@/lib/geometry-payloads";
 import type { CourseGeometry, CourseGeometryBundle, HoleMap, LatLng } from "@/lib/hole-geometry";
 import { OSM_ATTRIBUTION } from "@/lib/hole-geometry";
-import { assignHoles, normalizeOsmCourse, type ScorecardHole } from "@/lib/osm-normalize";
+import { assignHoles, namesDifferentCourse, normalizeOsmCourse, type ScorecardHole } from "@/lib/osm-normalize";
 import { courseAndHolesQuery, OverpassUnavailableError, runOverpass } from "@/lib/overpass";
 import {
   findNearbyCourseGeometry,
@@ -54,7 +54,12 @@ async function linkToNearbyCourse(
   fix: LatLng,
   holes: ScorecardHole[],
 ): Promise<CourseGeometryBundle | null> {
-  const nearby = await findNearbyCourseGeometry(fix.lat, fix.lng, NEARBY_COURSE_RADIUS_M);
+  // Two courses can share a park: Genesee Valley North's first tee is well within range of the
+  // South map already cached. A nearby map saved under another course's name is not this one.
+  const wanted = courseKey.split("|")[0];
+  const nearby = (await findNearbyCourseGeometry(fix.lat, fix.lng, NEARBY_COURSE_RADIUS_M)).filter(
+    (candidate) => !namesDifferentCourse(wanted, candidate.name),
+  );
   if (nearby.length === 0) return null;
 
   const closest = nearby.reduce((best, candidate) =>
