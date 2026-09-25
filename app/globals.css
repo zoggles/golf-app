@@ -535,6 +535,65 @@ html[data-live-round] .page-shell { padding-top: 18px; }
 .live-round .caddy-obstacles li strong { font-size: 20px; }
 .live-round .caddy-inline-off { min-height: 48px; color: var(--field-label); font-size: 13px; }
 
+/* I'm lost: a quiet way in, and a full-screen guide back to the right tee.
+   The link is deliberately the faintest thing on the hole card; it is for the rare round
+   that goes sideways, not something to reach for on every hole. */
+.lost-link { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; margin: 8px auto 0; padding: 0 14px; border: 0; background: transparent; color: var(--faint); font-size: 12px; font-weight: 600; cursor: pointer; }
+.live-round .lost-link { color: var(--field-label); opacity: .7; }
+html[data-lost-guide] body { overflow: hidden; }
+.lost-guide { position: fixed; inset: 0; z-index: 60; overflow-y: auto; overscroll-behavior: contain; background: var(--canvas); padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); }
+.lost-guide-inner { max-width: 560px; min-height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.lost-head { display: flex; align-items: center; justify-content: space-between; }
+.lost-head-label { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 11px; font-weight: 750; letter-spacing: .16em; }
+.lost-close, .lost-target button { display: grid; place-items: center; border: 2px solid var(--field-control-edge); border-radius: 14px; background: var(--field-control); color: var(--ink); cursor: pointer; }
+.lost-close { width: 48px; height: 48px; }
+.lost-target { display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px; align-items: center; gap: 8px; }
+.lost-target > div { min-width: 0; text-align: center; }
+.lost-target h2 { margin: 0; font-size: 30px; line-height: 1.1; letter-spacing: -.03em; }
+.lost-target span { color: var(--field-label); font-size: 12px; font-weight: 600; }
+.lost-target button { width: 52px; height: 48px; }
+.lost-target button:disabled { opacity: .35; cursor: not-allowed; }
+.lost-body { display: grid; gap: 12px; }
+.lost-pointer { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 16px; padding: 14px 16px; border: 2px solid rgba(243,241,232,.22); border-radius: 16px; background: rgba(0,0,0,.2); }
+.lost-arrow { width: 92px; height: 92px; display: grid; place-items: center; border-radius: 50%; background: rgba(173,240,95,.1); color: var(--green); }
+.lost-arrow svg { width: 66px; height: 66px; fill: var(--green); }
+.lost-pointer-copy { min-width: 0; }
+.lost-pointer-copy small { color: var(--field-label); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+.lost-pointer-copy strong { display: block; font-size: 44px; line-height: 1.05; letter-spacing: -.04em; }
+.lost-pointer-copy strong span { color: var(--field-label); font-size: 16px; letter-spacing: 0; }
+.lost-pointer-copy p { margin: 2px 0 0; color: var(--green); font-size: 18px; font-weight: 800; }
+.lost-notes { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.lost-notes li { display: flex; align-items: center; gap: 7px; color: var(--ink); font-size: 15px; line-height: 1.4; }
+.lost-notes li > svg { flex-shrink: 0; }
+.lost-notes li.warn { color: var(--sand); font-weight: 700; }
+.lost-notes li.quiet { color: var(--field-label); font-size: 13px; }
+.lost-arrived { display: flex; align-items: center; gap: 14px; padding: 16px; border: 2px solid var(--green); border-radius: 16px; background: rgba(173,240,95,.1); color: var(--green); }
+.lost-arrived > svg { flex-shrink: 0; }
+.lost-arrived strong { display: block; color: var(--ink); font-size: 20px; }
+.lost-arrived span { color: var(--field-label); font-size: 14px; }
+.lost-status { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; color: var(--field-label); font-size: 14px; line-height: 1.45; }
+.lost-status.warn { color: var(--sand); }
+.lost-status.error { color: var(--danger); }
+.lost-status > svg { flex-shrink: 0; }
+.lost-map { display: block; width: 100%; aspect-ratio: 320 / 400; max-height: 50vh; border: 1px solid var(--line); border-radius: 16px; background: radial-gradient(circle at 50% 84%, rgba(21,40,27,.92), rgba(6,14,9,.96)); }
+.lost-attribution { margin: -4px 0 0; color: var(--field-label); font-size: 10px; }
+.lost-actions { display: grid; gap: 10px; margin-top: auto; padding-top: 4px; }
+.lost-actions button { min-height: 54px; }
+.lost-fairway-target { stroke: rgba(173,240,95,.3); }
+.lost-green { opacity: .8; }
+.lost-target-line { fill: none; stroke: var(--green); stroke-width: 1.2; opacity: .7; }
+.lost-route { stroke: var(--green); stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: .5 6; }
+.lost-tee-badge circle { fill: #0b1610; stroke: rgba(243,241,232,.55); stroke-width: 1; }
+.lost-tee-badge text { fill: var(--ink); font-size: 8px; font-weight: 800; text-anchor: middle; dominant-baseline: central; }
+.lost-tee-badge.target circle { fill: var(--green); stroke: none; }
+.lost-tee-badge.target .lost-target-ring { fill: rgba(173,240,95,.14); stroke: rgba(173,240,95,.6); stroke-width: 1; transform-box: fill-box; transform-origin: center; animation: lost-ring 1.8s ease-out infinite; }
+.lost-tee-badge.target text { fill: #0a150c; font-size: 10px; }
+.lost-heading { fill: rgba(173,240,95,.28); stroke: rgba(173,240,95,.55); stroke-width: .6; }
+.lost-north circle { fill: rgba(8,17,12,.8); stroke: rgba(243,241,232,.35); stroke-width: 1; }
+.lost-north path { fill: var(--danger); }
+.lost-north text { fill: var(--ink); font-size: 10px; font-weight: 800; text-anchor: middle; dominant-baseline: central; }
+@keyframes lost-ring { from { transform: scale(.7); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+
 .live-round .score-grid { border: 2px solid rgba(243,241,232,.22); }
 .live-round .hole-cell span, .live-round .hole-cell small { color: var(--field-label); font-size: 10px; }
 .live-round .hole-cell strong { font-size: 20px; }

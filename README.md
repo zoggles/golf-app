@@ -11,6 +11,7 @@ A mobile-first, voice-friendly golf round tracker. Golfers, rounds, and course s
 - Record until you tap stop, with pauses allowed while you think
 - Update current or past holes with general requests, including several corrections at once
 - Manual one-handed score entry and complete scorecard
+- An "I'm lost" guide that walks you back to the next hole on your card after a wrong turn
 - Correct a saved round's scores and the date it was played
 - Log a finished round by photographing its paper scorecard, with a review step before it is saved
 - Supabase-backed record of every game, synced across devices and kept separate per golfer
@@ -186,6 +187,30 @@ Overpass is called at most once per physical course: the route checks the cache 
 then for any cached course within 2.5 km of the fix, before going out to the network. A
 course OSM has not mapped is recorded as an empty row so it is never looked up again, and
 greens can be captured by standing on them instead.
+
+### Finding your hole
+
+The hole card ends with a quiet **I'm lost** link, shown during a round on a mapped course. It
+opens a full-screen guide to the next hole on the card: the first one without a score, which
+is the right answer after playing the wrong hole whether or not that hole was scored. The
+arrows beside the hole number pick a different one.
+
+`lib/lost-guide.ts` does the measuring, and every line it shows is backed by the map:
+
+- It aims for the tee on the scorecard, not the back tee OSM starts the hole from: that tee sits
+  the card's yardage back from the green along the hole's line, capped at 120 m up from the tips.
+- Anywhere between the back tee and that tee counts as having arrived. Once there, the fix has
+  to wander 55 m away before the guide takes it back, so GPS wobble cannot flicker the screen.
+- "You're by the 8th green" and "Hole 4 tees off by the 3rd green" are only said when one hole
+  is plainly nearer than any other; between two fairways it says nothing.
+- It warns when mapped water crosses the straight walk. It does not route around it, because
+  only water is reliably mapped and a route that avoided it could steer through what is not.
+
+The arrow comes from the phone's compass (`lib/compass.ts`): the absolute orientation event on
+Android, `webkitCompassHeading` on iOS after asking from the tap that opened the guide. Without
+a compass it follows the direction you are walking. The guide runs its own position watch and
+compass, and Caddy View's watch is closed while it is open. On Android the back button closes
+the guide before it does anything else.
 
 ## Round summaries
 

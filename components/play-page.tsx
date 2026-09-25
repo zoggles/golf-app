@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -9,6 +9,7 @@ import {
   CaretRight,
   Check,
   CheckCircle,
+  Compass,
   FlagPennant,
   GpsFix,
   MapPin,
@@ -20,7 +21,8 @@ import {
 import { GENESEE_VALLEY_SOUTH, getSegmentHoles, segmentLabel } from "@/lib/courses";
 import { apiUrl } from "@/lib/api-url";
 import { authHeaders } from "@/lib/auth-client";
-import { refreshCourseGeometry } from "@/lib/course-geometry-cache";
+import { mappedHoleCount, refreshCourseGeometry } from "@/lib/course-geometry-cache";
+import { requestCompassAccess } from "@/lib/compass";
 import { courseKey } from "@/lib/course-key";
 import { completeRound, discardActiveRound, firstUnscoredHole, forgetCourse, saveCourse, startRound, updateRoundHoleMetrics, updateRoundScore } from "@/lib/storage";
 import { estimateHandicap, estimateRoundHandicap, formatToPar, handicapStrokesForHole, holeMetricsByNumber, summarizeRound } from "@/lib/metrics";
@@ -29,10 +31,12 @@ import { COMMON_TEES, courseListOptions, normalizeTee, samePhysicalCourse, teeOp
 import type { Course, HoleMetrics, RoundSegment } from "@/lib/types";
 import { useGolfData } from "@/hooks/use-golf-data";
 import { useCaddyViewPrefs } from "@/hooks/use-caddy-view-prefs";
+import { useCourseGeometry } from "@/hooks/use-course-geometry";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { setCaddyViewEnabled } from "@/lib/caddy-view-prefs";
 import { CaddyView } from "./caddy-view";
 import { ClubCallout } from "./club-callout";
+import { LostGuide } from "./lost-guide";
 import { ScorecardPhotoImport } from "./scorecard-photo-import";
 import { VoiceControl } from "./voice-control";
 
@@ -334,6 +338,8 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
   const [feedback, setFeedback] = useState("Ready for your first score.");
   const [activity, setActivity] = useState<string | null>(null);
   const completionActionsRef = useRef<HTMLDivElement | null>(null);
+  const [lostOpen, setLostOpen] = useState(false);
+  const closeLost = useCallback(() => setLostOpen(false), []);
 
   // The scoring dock takes the tab bar's place for as long as a round is open, so the
   // controls used on every hole stay under the thumb. Marked on the document rather than
@@ -354,6 +360,7 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
     if (hasRound) void refreshCourseGeometry(courseKey(course), course.holes.length);
   }, [hasRound, course]);
 
+  const geometry = useCourseGeometry(courseKey(course));
   const currentHole = course.holes.find((item) => item.number === selectedHole) ?? course.holes[0];
 
   if (!round) return null;
@@ -366,6 +373,9 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
   const metricsByHole = holeMetricsByNumber(round);
   const currentMetrics = metricsByHole[currentHole.number] ?? {};
   const currentMetricCount = Object.values(currentMetrics).filter((value) => value !== undefined).length;
+  // Only offered where it can help: a hole still to play, and a course map to steer by.
+  const nextHole = firstUnscoredHole(round);
+  const canFindHole = nextHole !== null && mappedHoleCount(geometry.bundle) > 0;
 
   function revealCompletion() {
     setFeedback("Final score saved. Every hole is recorded—complete the round when you’re ready.");
@@ -510,7 +520,8 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
         <p className="hole-brief-note">
           {currentHoleStrokes ? `You get +${currentHoleStrokes} stroke${currentHoleStrokes > 1 ? "s" : ""} here.` : "No handicap stroke on this hole."} HCP 1 is the hardest hole.
         </p>
-        {caddyView.enabled ? (
+        {/* Closed while the lost guide is open, which runs its own position watch. */}
+        {caddyView.enabled && !lostOpen ? (
           <CaddyView
             hole={currentHole}
             course={course}
@@ -539,6 +550,19 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
             </div>
           </div>
         </details>
+        {canFindHole ? (
+          <button
+            type="button"
+            className="lost-link"
+            onClick={() => {
+              // Asked here, inside the tap, because iOS will not show the prompt from anywhere else.
+              void requestCompassAccess();
+              setLostOpen(true);
+            }}
+          >
+            <Compass size={15} /> I&apos;m lost
+          </button>
+        ) : null}
       </section>
 
       <section className="voice-score-card surface-card">
@@ -616,6 +640,20 @@ function ActiveRound({ roundId, onExit }: { roundId: string; onExit: () => void 
           </div>
         </div>
       </section>
+
+      {lostOpen && nextHole !== null ? (
+        <LostGuide
+          course={course}
+          holeNumbers={holes.map((hole) => hole.number)}
+          nextHole={nextHole}
+          onClose={closeLost}
+          onPlayHole={(holeNumber) => {
+            selectHole(holeNumber);
+            setLostOpen(false);
+            setFeedback(`Back on track. Hole ${holeNumber} is up.`);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

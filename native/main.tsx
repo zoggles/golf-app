@@ -5,6 +5,7 @@ import { Capacitor } from "@capacitor/core";
 import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { PlayPage } from "@/components/play-page";
+import { backPressClaimed } from "@/lib/native-back";
 import "@/app/globals.css";
 import "./native.css";
 
@@ -25,6 +26,7 @@ function NativeRouter() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const listener = NativeApp.addListener("backButton", () => {
+      if (backPressClaimed()) return;
       if (window.location.hash !== "#/play") {
         window.history.back();
       } else {
