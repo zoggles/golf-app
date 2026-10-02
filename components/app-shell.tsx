@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChartLineUp, FlagPennant } from "@phosphor-icons/react";
+import { ChartLineUp, FlagPennant, Golf } from "@phosphor-icons/react";
 import { useAuth } from "@/hooks/use-auth";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import { AccountGate, GolferSwitcher } from "./golfer-switcher";
@@ -10,6 +10,7 @@ import { AccountGate, GolferSwitcher } from "./golfer-switcher";
 const navItems = [
   { href: "/play", label: "Play", icon: FlagPennant },
   { href: "/progress", label: "Progress", icon: ChartLineUp },
+  { href: "/clubs", label: "My Clubs", icon: Golf },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

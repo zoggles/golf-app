@@ -1,15 +1,32 @@
 import { describe, expect, it } from "vitest";
 import {
+  addClub,
+  bagGaps,
+  catalogClub,
+  CLUB_CATALOG,
+  clubsByLoft,
   DEFAULT_BAG,
+  isNewerBag,
+  logShot,
   longestCarry,
   longestClubWithin,
   MAX_CARRY_YDS,
+  MAX_CLUBS,
+  MAX_SHOTS_PER_CLUB,
   MIN_CARRY_YDS,
   normalizeBag,
   pickClub,
+  removeClub,
+  removeShot,
+  setCarry,
   shortestCarry,
+  shotsSince,
+  shotSpread,
   stepDown,
+  suggestCarry,
+  type Bag,
 } from "./bag";
+import { bagPayloadSchema } from "./bag-payloads";
 
 describe("DEFAULT_BAG", () => {
   it("runs longest to shortest with no repeated ids", () => {
@@ -109,5 +126,148 @@ describe("normalizeBag", () => {
 
   it("leaves a good bag alone", () => {
     expect(normalizeBag(DEFAULT_BAG)).toEqual(DEFAULT_BAG);
+  });
+  it("keeps range shots and the change stamp", () => {
+    const bag = normalizeBag({
+      updatedAt: "2026-10-02T12:00:00.000+00:00",
+      clubs: [
+        {
+          id: "7i",
+          label: "7 iron",
+          carryYds: 145,
+          shots: [
+            { yds: 151, at: "2026-10-02T11:05:00.000Z" },
+            { yds: 148, at: "2026-10-02T11:01:00.000Z" },
+            { yds: "far", at: "2026-10-02T11:02:00.000Z" },
+            { yds: 150, at: "not a date" },
+          ],
+        },
+      ],
+    });
+    expect(bag.updatedAt).toBe("2026-10-02T12:00:00.000Z");
+    expect(bag.clubs[0].shots).toEqual([
+      { yds: 148, at: "2026-10-02T11:01:00.000Z" },
+      { yds: 151, at: "2026-10-02T11:05:00.000Z" },
+    ]);
+  });
+});
+
+const club = (bag: Bag, id: string) => bag.clubs.find((item) => item.id === id)!;
+
+describe("the catalog", () => {
+  it("covers every default club", () => {
+    for (const item of DEFAULT_BAG.clubs) expect(catalogClub(item.id)?.carryYds).toBe(item.carryYds);
+  });
+
+  it("has no repeated ids", () => {
+    expect(new Set(CLUB_CATALOG.map((entry) => entry.id)).size).toBe(CLUB_CATALOG.length);
+  });
+});
+
+describe("clubsByLoft", () => {
+  it("holds its order when carries cross", () => {
+    const crossed = setCarry(DEFAULT_BAG, "7i", 160);
+    expect(clubsByLoft(crossed).map((item) => item.id)).toEqual(clubsByLoft(DEFAULT_BAG).map((item) => item.id));
+    expect(clubsByLoft(DEFAULT_BAG)[0].id).toBe("driver");
+    expect(clubsByLoft(DEFAULT_BAG).at(-1)?.id).toBe("lw");
+  });
+});
+
+describe("adding and removing clubs", () => {
+  it("scales a new club to how far this golfer hits the rest", () => {
+    const long = { clubs: DEFAULT_BAG.clubs.map((item) => ({ ...item, carryYds: Math.round(item.carryYds * 1.1) })) };
+    const fourIron = catalogClub("4i")!;
+    expect(suggestCarry(DEFAULT_BAG, fourIron)).toBe(174);
+    expect(suggestCarry(long, fourIron)).toBe(191);
+  });
+
+  it("stops at thirteen clubs, since the putter makes fourteen", () => {
+    expect(DEFAULT_BAG.clubs).toHaveLength(MAX_CLUBS);
+    expect(addClub(DEFAULT_BAG, "4i")).toBe(DEFAULT_BAG);
+    const roomy = removeClub(DEFAULT_BAG, "lw");
+    const added = addClub(roomy, "4i");
+    expect(added.clubs).toHaveLength(MAX_CLUBS);
+    expect(club(added, "4i").label).toBe("4 iron");
+  });
+
+  it("ignores unknown and repeated clubs", () => {
+    const roomy = removeClub(DEFAULT_BAG, "lw");
+    expect(addClub(roomy, "putter")).toBe(roomy);
+    expect(addClub(roomy, "7i")).toBe(roomy);
+  });
+
+  it("never empties the bag", () => {
+    const one = { clubs: [DEFAULT_BAG.clubs[0]] };
+    expect(removeClub(one, "driver")).toBe(one);
+  });
+
+  it("clamps a typed carry", () => {
+    expect(club(setCarry(DEFAULT_BAG, "7i", 2), "7i").carryYds).toBe(MIN_CARRY_YDS);
+    expect(club(setCarry(DEFAULT_BAG, "7i", 151.6), "7i").carryYds).toBe(152);
+  });
+});
+
+describe("range shots", () => {
+  it("logs, trims and removes shots", () => {
+    let bag = DEFAULT_BAG;
+    for (let index = 0; index < MAX_SHOTS_PER_CLUB + 5; index += 1) {
+      bag = logShot(bag, "7i", 140 + (index % 10), new Date(Date.UTC(2026, 9, 2, 12, 0, index)).toISOString());
+    }
+    const shots = club(bag, "7i").shots!;
+    expect(shots).toHaveLength(MAX_SHOTS_PER_CLUB);
+    expect(shots[0].at).toBe("2026-10-02T12:00:05.000Z");
+
+    const trimmed = removeShot(bag, "7i", shots[0].at);
+    expect(club(trimmed, "7i").shots).toHaveLength(MAX_SHOTS_PER_CLUB - 1);
+    expect(club(trimmed, "8i").shots).toBeUndefined();
+  });
+
+  it("reads a median that one mishit cannot drag down", () => {
+    const shots = [150, 152, 61, 149, 151].map((yds, index) => ({ yds, at: `2026-10-02T12:00:0${index}.000Z` }));
+    expect(shotSpread(shots)).toEqual({ count: 5, median: 150, min: 61, max: 152 });
+    expect(shotSpread([])).toBeNull();
+  });
+
+  it("separates this session from earlier ones", () => {
+    let bag = logShot(DEFAULT_BAG, "pw", 100, "2026-09-28T15:00:00.000Z");
+    bag = logShot(bag, "pw", 108, "2026-10-02T15:00:00.000Z");
+    expect(shotsSince(club(bag, "pw"), "2026-10-02T14:00:00.000Z").map((shot) => shot.yds)).toEqual([108]);
+  });
+});
+
+describe("bagGaps", () => {
+  it("finds nothing to flag in the default bag", () => {
+    expect(bagGaps(DEFAULT_BAG).every((gap) => gap.tone === "even")).toBe(true);
+  });
+
+  it("flags a hole, a pair doing one job, and a crossed pair", () => {
+    const tones = (bag: Bag) => Object.fromEntries(bagGaps(bag).map((gap) => [`${gap.upper.id}-${gap.lower.id}`, gap.tone]));
+    expect(tones(removeClub(DEFAULT_BAG, "gw"))["pw-sw"]).toBe("wide");
+    expect(tones(setCarry(DEFAULT_BAG, "8i", 142))["7i-8i"]).toBe("tight");
+    const crossed = bagGaps(setCarry(DEFAULT_BAG, "7i", 160)).find((gap) => gap.upper.id === "6i");
+    expect(crossed?.yds).toBe(-5);
+    expect(crossed?.tone).toBe("tight");
+  });
+
+  it("never calls the step down from driver wide", () => {
+    expect(bagGaps(setCarry(DEFAULT_BAG, "driver", 260))[0].tone).toBe("even");
+  });
+});
+
+describe("syncing", () => {
+  it("orders bags by their stamp, with an unstamped bag oldest", () => {
+    const older = { ...DEFAULT_BAG, updatedAt: "2026-10-01T10:00:00.000Z" };
+    const newer = { ...DEFAULT_BAG, updatedAt: "2026-10-02T10:00:00.000Z" };
+    expect(isNewerBag(newer, older)).toBe(true);
+    expect(isNewerBag(older, newer)).toBe(false);
+    expect(isNewerBag(older, DEFAULT_BAG)).toBe(true);
+    expect(isNewerBag(DEFAULT_BAG, null)).toBe(false);
+  });
+
+  it("accepts a bag the app would send and refuses a malformed one", () => {
+    const bag = logShot({ ...DEFAULT_BAG, updatedAt: new Date().toISOString() }, "7i", 150, new Date().toISOString());
+    expect(bagPayloadSchema.safeParse({ bag }).success).toBe(true);
+    expect(bagPayloadSchema.safeParse({ bag: { clubs: [], updatedAt: bag.updatedAt } }).success).toBe(false);
+    expect(bagPayloadSchema.safeParse({ bag: { clubs: bag.clubs } }).success).toBe(false);
   });
 });

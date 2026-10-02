@@ -12,6 +12,9 @@ import "./native.css";
 const ProgressPage = lazy(() =>
   import("@/components/progress-page").then((module) => ({ default: module.ProgressPage })),
 );
+const MyClubsPage = lazy(() =>
+  import("@/components/my-clubs-page").then((module) => ({ default: module.MyClubsPage })),
+);
 const RoundDetailPage = lazy(() =>
   import("@/components/round-detail-page").then((module) => ({ default: module.RoundDetailPage })),
 );
@@ -41,6 +44,8 @@ function NativeRouter() {
   let page = <PlayPage />;
   if (pathname === "/progress") {
     page = <ProgressPage />;
+  } else if (pathname === "/clubs") {
+    page = <MyClubsPage />;
   } else if (pathname.startsWith("/rounds/")) {
     page = <RoundDetailPage roundId={decodeURIComponent(pathname.slice("/rounds/".length))} />;
   }

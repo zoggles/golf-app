@@ -1,3 +1,5 @@
+import type { Bag } from "./bag";
+import { normalizeBag } from "./bag";
 import type { Golfer } from "./golfers";
 import type { Course, GolfData, GolfRound, Hole, RoundEvent, RoundSegment, RoundStatus } from "./types";
 import type { CourseGeometry, CourseGeometryBundle, CourseHazard, HoleMap, OsmHoleGeometry, TreeArea } from "./hole-geometry";
@@ -579,4 +581,33 @@ export async function saveRoundSummaryRow(row: {
       updated_at: new Date().toISOString(),
     }),
   });
+}
+
+interface BagRow {
+  clubs: unknown;
+  updated_at: string;
+}
+
+function bagFromRow(row: BagRow): Bag {
+  return normalizeBag({ clubs: row.clubs, updatedAt: row.updated_at });
+}
+
+/** This golfer's bag, or null before any device has saved one. */
+export async function readBagRow(golferId: string): Promise<Bag | null> {
+  const rows = await rest<BagRow[]>(
+    `golfer_bags?select=clubs,updated_at&golfer_id=eq.${encodeURIComponent(golferId)}&limit=1`,
+    { method: "GET" },
+  );
+  return rows[0] ? bagFromRow(rows[0]) : null;
+}
+
+export async function saveBagRow(golferId: string, bag: Bag): Promise<Bag> {
+  const rows = await rest<BagRow[]>("golfer_bags?on_conflict=golfer_id&select=clubs,updated_at", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=representation",
+    body: JSON.stringify({ golfer_id: golferId, clubs: bag.clubs, updated_at: bag.updatedAt ?? new Date().toISOString() }),
+  });
+  const row = rows[0];
+  if (!row) throw new SupabaseRequestError(500, "Bag upsert returned no row.");
+  return bagFromRow(row);
 }

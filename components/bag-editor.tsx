@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowCounterClockwise, Minus, Plus } from "@phosphor-icons/react";
+import Link from "next/link";
+import { ArrowCounterClockwise, ArrowRight, Minus, Plus } from "@phosphor-icons/react";
 import type { Bag } from "@/lib/bag";
 import { MAX_CARRY_YDS, MIN_CARRY_YDS } from "@/lib/bag";
 import { resetBag, saveBag } from "@/lib/bag-store";
@@ -8,9 +9,9 @@ import { resetBag, saveBag } from "@/lib/bag-store";
 /**
  * Carry distances, edited in place.
  *
- * Lives inside the Caddy View card rather than behind a settings screen, because the moment
- * you notice a number is wrong is the moment the club recommendation looks wrong, and that
- * is here.
+ * Lives inside the Caddy View card as well as on My Clubs, because the moment you notice a
+ * number is wrong is the moment the club recommendation looks wrong, and that is here. Both
+ * write the same synced bag.
  */
 
 const STEP_YDS = 5;
@@ -69,6 +70,13 @@ export function BagEditor({ bag, golferId }: { bag: Bag; golferId: string | null
             </div>
           </div>
         ))}
+        <Link className="optional-stat-row caddy-bag-link" href="/clubs">
+          <span>
+            <strong>Whole bag</strong>
+            <small>Add or remove clubs, log range shots</small>
+          </span>
+          <ArrowRight size={16} />
+        </Link>
         <div className="optional-stat-row">
           <span>
             <strong>Start over</strong>
