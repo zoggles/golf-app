@@ -9,17 +9,16 @@ import { readSelectedGolfer, subscribeToSelectedGolfer } from "./golfer-session"
 /**
  * Club distances, per golfer.
  *
- * This device's copy is the one everything reads, so Caddy View and range logging work with
+ * This device's copy is the one everything reads, so Caddy View and My Clubs work with
  * no signal. Every change is then copied to the golfer's account, and every launch pulls
- * the account's copy, so a bag set up at the range on a phone is the bag the website and
- * the next round use. Conflicts resolve by whole bag: the newest change wins.
+ * the account's copy, so a bag set up on a phone is the bag the website and the next
+ * round use. Conflicts resolve by whole bag: the newest change wins.
  */
 
 const KEY_PREFIX = "caddy-stack:bag:v1:";
 const UNSENT_PREFIX = "caddy-stack:bag-unsent:v1:";
-const SESSION_PREFIX = "caddy-stack:range-session:v1:";
 const CHANGE_EVENT = "caddy-stack:bag-change";
-/** Range logging saves on every ball; one request per pause is plenty. */
+/** Tapping a stepper saves on every tap; one request per pause is plenty. */
 const PUSH_DELAY_MS = 900;
 const RETRY_DELAYS_MS = [4_000, 15_000, 60_000];
 
@@ -109,7 +108,7 @@ export function saveBag(golferId: string, bag: Bag): void {
   schedulePush();
 }
 
-/** Default distances, keeping the range history of any club the default set still holds. */
+/** Default distances, keeping any logged shots for clubs the default set still holds. */
 export function resetBag(golferId: string): void {
   const previous = readBag(golferId);
   saveBag(golferId, {
@@ -248,63 +247,13 @@ function start(): void {
   });
 }
 
-/** A range session in progress. Device-only: it is a mode, not data. The shots are data. */
-export interface RangeSession {
-  startedAt: string;
-  clubId: string | null;
-}
-
-const sessionCache = new Map<string, RangeSession | null>();
-
-export function readRangeSession(golferId: string | null): RangeSession | null {
-  if (!golferId || typeof window === "undefined") return null;
-  if (sessionCache.has(golferId)) return sessionCache.get(golferId) ?? null;
-
-  let session: RangeSession | null = null;
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(SESSION_PREFIX + golferId) ?? "null") as Partial<RangeSession> | null;
-    if (parsed && typeof parsed.startedAt === "string" && !Number.isNaN(Date.parse(parsed.startedAt))) {
-      session = { startedAt: parsed.startedAt, clubId: typeof parsed.clubId === "string" ? parsed.clubId : null };
-    }
-  } catch {
-    session = null;
-  }
-  sessionCache.set(golferId, session);
-  return session;
-}
-
-function writeRangeSession(golferId: string, session: RangeSession | null): void {
-  sessionCache.set(golferId, session);
-  try {
-    if (session) window.localStorage.setItem(SESSION_PREFIX + golferId, JSON.stringify(session));
-    else window.localStorage.removeItem(SESSION_PREFIX + golferId);
-  } catch {
-    // The session still runs for as long as the page stays open.
-  }
-  emitChange();
-}
-
-export function startRangeSession(golferId: string, clubId: string | null): void {
-  writeRangeSession(golferId, { startedAt: new Date().toISOString(), clubId });
-}
-
-export function selectRangeClub(golferId: string, clubId: string): void {
-  const session = readRangeSession(golferId);
-  if (session && session.clubId !== clubId) writeRangeSession(golferId, { ...session, clubId });
-}
-
-export function endRangeSession(golferId: string): void {
-  writeRangeSession(golferId, null);
-}
-
 export function subscribeToBag(onChange: () => void): () => void {
   if (typeof window === "undefined") return () => undefined;
   start();
   const onStorage = (event: StorageEvent) => {
-    if (event.key !== null && !event.key.startsWith(KEY_PREFIX) && !event.key.startsWith(SESSION_PREFIX)) return;
-    // Another tab changed the bag or the session.
+    if (event.key !== null && !event.key.startsWith(KEY_PREFIX)) return;
+    // Another tab changed the bag.
     cache.clear();
-    sessionCache.clear();
     onChange();
   };
   window.addEventListener(CHANGE_EVENT, onChange);

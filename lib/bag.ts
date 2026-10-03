@@ -12,7 +12,7 @@ export interface Club {
   label: string;
   /** Carry in yards. Carry, not total — roll is modelled separately when a shot is drawn. */
   carryYds: number;
-  /** Recent range shots, oldest first. Optional so bags saved before range logging still read. */
+  /** Range shots logged by an earlier build. Kept so nothing a golfer logged is thrown away. */
   shots?: RangeShot[];
 }
 
@@ -29,7 +29,7 @@ const MIN_SHOT_YDS = 1;
 const MAX_SHOT_YDS = 400;
 /** Enough history for a steady median without the bag document growing without end. */
 export const MAX_SHOTS_PER_CLUB = 40;
-/** The Rules allow fourteen clubs and the putter is one of them. */
+/** The Rules allow fourteen clubs and the putter is one of them. A warning, not a wall. */
 export const MAX_CLUBS = 13;
 
 /**
@@ -149,7 +149,7 @@ export function suggestCarry(bag: Bag, entry: CatalogClub): number {
 
 export function addClub(bag: Bag, clubId: string): Bag {
   const entry = catalogClub(clubId);
-  if (!entry || bag.clubs.some((club) => club.id === clubId) || bag.clubs.length >= MAX_CLUBS) return bag;
+  if (!entry || bag.clubs.some((club) => club.id === clubId)) return bag;
   return { ...bag, clubs: [...bag.clubs, { id: entry.id, label: entry.label, carryYds: suggestCarry(bag, entry) }] };
 }
 
@@ -165,38 +165,6 @@ function updateClub(bag: Bag, clubId: string, change: (club: Club) => Club): Bag
 
 export function setCarry(bag: Bag, clubId: string, carryYds: number): Bag {
   return updateClub(bag, clubId, (club) => ({ ...club, carryYds: clampCarry(carryYds) }));
-}
-
-export function logShot(bag: Bag, clubId: string, yds: number, at: string): Bag {
-  const shot = { yds: Math.round(Math.min(MAX_SHOT_YDS, Math.max(MIN_SHOT_YDS, yds))), at };
-  return updateClub(bag, clubId, (club) => ({
-    ...club,
-    shots: [...(club.shots ?? []), shot].slice(-MAX_SHOTS_PER_CLUB),
-  }));
-}
-
-export function removeShot(bag: Bag, clubId: string, at: string): Bag {
-  return updateClub(bag, clubId, (club) => ({ ...club, shots: (club.shots ?? []).filter((shot) => shot.at !== at) }));
-}
-
-export interface ShotSpread {
-  count: number;
-  /** The number to trust: one topped ball does not move a median. */
-  median: number;
-  min: number;
-  max: number;
-}
-
-export function shotSpread(shots: RangeShot[]): ShotSpread | null {
-  if (shots.length === 0) return null;
-  const yards = shots.map((shot) => shot.yds);
-  return { count: shots.length, median: Math.round(median(yards)), min: Math.min(...yards), max: Math.max(...yards) };
-}
-
-/** Shots logged at or after a moment, such as the start of a range session. */
-export function shotsSince(club: Club, since: string): RangeShot[] {
-  const from = Date.parse(since);
-  return (club.shots ?? []).filter((shot) => Date.parse(shot.at) >= from);
 }
 
 export type GapTone = "even" | "wide" | "tight";

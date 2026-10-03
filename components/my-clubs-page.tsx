@@ -1,19 +1,8 @@
 "use client";
 
 import { Fragment, useState, type CSSProperties } from "react";
-import {
-  ArrowCounterClockwise,
-  ArrowRight,
-  CheckCircle,
-  CloudArrowUp,
-  CloudCheck,
-  CloudSlash,
-  Plus,
-  Target,
-  Trash,
-} from "@phosphor-icons/react";
-import { RangeSessionView } from "@/components/range-session";
-import { useBag, useBagSyncStatus, useRangeSession } from "@/hooks/use-bag";
+import { ArrowCounterClockwise, CloudArrowUp, CloudCheck, CloudSlash, Plus, Trash } from "@phosphor-icons/react";
+import { useBag, useBagSyncStatus } from "@/hooks/use-bag";
 import { useSelectedGolfer } from "@/hooks/use-selected-golfer";
 import {
   addClub,
@@ -27,17 +16,16 @@ import {
   MIN_CARRY_YDS,
   removeClub,
   setCarry,
-  shotSpread,
   type Bag,
   type Club,
   type ClubGap,
   type ClubKind,
 } from "@/lib/bag";
-import { readBag, resetBag, saveBag, startRangeSession, syncBag, type BagSyncStatus } from "@/lib/bag-store";
+import { readBag, resetBag, saveBag, syncBag, type BagSyncStatus } from "@/lib/bag-store";
 
 /**
- * The bag, in one place: which clubs are in it, how far each one carries, and the range
- * sessions that set those numbers. Caddy View reads from here on every round.
+ * The bag, in one place: which clubs are in it and how far each one carries. Every change
+ * saves the moment it is made, and Caddy View reads from here on every round.
  */
 
 const KIND_GROUPS: Array<{ kind: ClubKind; label: string }> = [
@@ -47,27 +35,24 @@ const KIND_GROUPS: Array<{ kind: ClubKind; label: string }> = [
   { kind: "wedge", label: "Wedges" },
 ];
 
-const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
 export function MyClubsPage() {
   const golferId = useSelectedGolfer()?.id ?? null;
   const bag = useBag(golferId);
   const syncStatus = useBagSyncStatus(golferId);
-  const session = useRangeSession(golferId);
   const [openId, setOpenId] = useState<string | null>(null);
 
   if (!golferId) return null;
-  if (session) return <RangeSessionView golferId={golferId} bag={bag} session={session} />;
 
   const ordered = clubsByLoft(bag);
   const gaps = bagGaps(bag);
   const longest = ordered.reduce((best, club) => (club.carryYds > best.carryYds ? club : best), ordered[0]);
   const shortest = ordered.reduce((best, club) => (club.carryYds < best.carryYds ? club : best), ordered[0]);
-  const allShots = bag.clubs.flatMap((club) => club.shots ?? []);
-  const lastShotAt = allShots.reduce<string | null>((latest, shot) => (!latest || shot.at > latest ? shot.at : latest), null);
+  // The step down from driver is never one you need to fill, so it does not count here.
+  const widest = gaps
+    .filter((gap) => gap.upper.id !== "driver")
+    .reduce<ClubGap | null>((best, gap) => (!best || gap.yds > best.yds ? gap : best), null);
   // Fifty-yard gridlines, with headroom past the longest club so its bar never touches the edge.
   const scaleYds = Math.ceil((longest.carryYds + 15) / 50) * 50;
-  const warmUpClub = ordered.find((club) => club.id === "pw") ?? ordered[ordered.length - 1];
 
   function addToBag(clubId: string) {
     saveBag(golferId!, addClub(readBag(golferId), clubId));
@@ -84,30 +69,24 @@ export function MyClubsPage() {
           </div>
           <SyncPill status={syncStatus} />
         </div>
-        <p className="clubs-lede">Every carry here feeds Caddy View’s club picks, on every round and every device.</p>
+        <p className="clubs-lede">Tap any club to change its yardage. Every change saves straight away and feeds Caddy View on every round.</p>
         <BagMeter clubs={ordered} />
         <div className="clubs-stats">
           <span><small>LONGEST</small><strong>{longest.carryYds}</strong><em>{longest.label}</em></span>
           <span><small>SHORTEST</small><strong>{shortest.carryYds}</strong><em>{shortest.label}</em></span>
-          <span><small>RANGE SHOTS</small><strong>{allShots.length}</strong><em>{lastShotAt ? `Last ${shortDate(lastShotAt)}` : "None yet"}</em></span>
+          <span>
+            <small>BIGGEST GAP</small>
+            <strong>{widest ? widest.yds : "—"}</strong>
+            <em>{widest ? `${clubShort(widest.upper)} → ${clubShort(widest.lower)}` : "One club"}</em>
+          </span>
         </div>
       </section>
-
-      <button className="range-cta" type="button" onClick={() => startRangeSession(golferId, warmUpClub?.id ?? null)}>
-        <span className="range-cta-icon"><Target size={28} weight="duotone" /></span>
-        <span className="range-cta-copy">
-          <small>HEADED TO THE RANGE?</small>
-          <strong>Start a range session</strong>
-          <span>Log each ball as it lands. Your carries come from what you actually hit.</span>
-        </span>
-        <ArrowRight className="range-cta-arrow" size={22} weight="bold" />
-      </button>
 
       <section className="carry-ladder surface-card" style={{ "--tick": `${(50 / scaleYds) * 100}%` } as CSSProperties}>
         <header className="ladder-head">
           <div>
-            <h2>Carry ladder</h2>
-            <p>Strongest loft to weakest. Tap a club to set its number.</p>
+            <h2>Carry yardages</h2>
+            <p>Strongest loft to weakest. Tap a club to edit or remove it.</p>
           </div>
         </header>
         <div className="ladder-scale" aria-hidden="true">
@@ -152,23 +131,28 @@ function SyncPill({ status }: { status: BagSyncStatus }) {
   return <span className="sync-pill"><CloudCheck size={15} weight="bold" /> {status === "synced" ? "Synced" : "Saved"}</span>;
 }
 
-/** Fourteen slots, putter first, each club tinted by what kind it is. */
+/** A slot per club, putter first, each tinted by what kind of club it is. */
 function BagMeter({ clubs }: { clubs: Club[] }) {
   const count = clubs.length + 1;
+  const over = count > MAX_CLUBS + 1;
+  const slots = Math.max(MAX_CLUBS, clubs.length);
   return (
-    <div className="bag-meter">
-      <div className="bag-meter-slots" role="img" aria-label={`${clubs.length} clubs plus a putter: ${count} of the 14 the rules allow`}>
+    <div className={over ? "bag-meter over" : "bag-meter"}>
+      <div
+        className="bag-meter-slots"
+        style={{ gridTemplateColumns: `repeat(${slots + 1}, minmax(0, 1fr))` }}
+        role="img"
+        aria-label={`${clubs.length} clubs plus a putter: ${count} clubs, and the rules allow 14`}
+      >
         <span className="bag-slot putter" title="Putter" />
-        {Array.from({ length: MAX_CLUBS }, (_, index) => {
+        {Array.from({ length: slots }, (_, index) => {
           const club = clubs[index];
-          return club ? (
-            <span key={club.id} className={`bag-slot on kind-${clubKind(club)}`} title={club.label} />
-          ) : (
-            <span key={`empty-${index}`} className="bag-slot" />
-          );
+          if (!club) return <span key={`empty-${index}`} className="bag-slot" />;
+          const extra = index >= MAX_CLUBS ? " extra" : "";
+          return <span key={club.id} className={`bag-slot on kind-${clubKind(club)}${extra}`} title={club.label} />;
         })}
       </div>
-      <p><span><strong>{count}</strong>/14</span><small>putter in</small></p>
+      <p><span><strong>{count}</strong>/14</span><small>{over ? "over the limit" : "putter in"}</small></p>
     </div>
   );
 }
@@ -207,23 +191,17 @@ interface ClubRowProps {
 }
 
 function ClubRow({ golferId, club, scaleYds, open, canRemove, onToggle }: ClubRowProps) {
-  const spread = shotSpread(club.shots ?? []);
-  const pct = (yds: number) => `${Math.min(100, (yds / scaleYds) * 100)}%`;
-
   return (
     <li className={`ladder-row kind-${clubKind(club)}${open ? " open" : ""}`}>
       <button type="button" className="ladder-main" onClick={onToggle} aria-expanded={open}>
         <span className="club-chip">{clubShort(club)}</span>
         <span className="ladder-name">
           <strong>{club.label}</strong>
-          <small>{spread ? `${spread.count} range ${spread.count === 1 ? "shot" : "shots"} · median ${spread.median}` : "No range shots yet"}</small>
+          <small>{open ? "Editing" : "Tap to edit"}</small>
         </span>
         <span className="ladder-carry"><strong>{club.carryYds}</strong><small>YDS</small></span>
         <span className="ladder-track" aria-hidden="true">
-          {spread && spread.count > 1 ? (
-            <span className="ladder-spread" style={{ left: pct(spread.min), width: `calc(${pct(spread.max)} - ${pct(spread.min)})` }} />
-          ) : null}
-          <span className="ladder-fill" style={{ width: pct(club.carryYds) }} />
+          <span className="ladder-fill" style={{ width: `${Math.min(100, (club.carryYds / scaleYds) * 100)}%` }} />
         </span>
       </button>
       {open ? <ClubEditor golferId={golferId} club={club} canRemove={canRemove} /> : null}
@@ -232,7 +210,6 @@ function ClubRow({ golferId, club, scaleYds, open, canRemove, onToggle }: ClubRo
 }
 
 function ClubEditor({ golferId, club, canRemove }: { golferId: string; club: Club; canRemove: boolean }) {
-  const spread = shotSpread(club.shots ?? []);
   const commit = (yds: number) => saveBag(golferId, setCarry(readBag(golferId), club.id, yds));
 
   return (
@@ -246,28 +223,13 @@ function ClubEditor({ golferId, club, canRemove }: { golferId: string; club: Clu
         <button type="button" onClick={() => commit(club.carryYds + 5)} disabled={club.carryYds >= MAX_CARRY_YDS} aria-label={`${club.label} 5 yards longer`}>+5</button>
       </div>
 
-      {spread ? (
-        <div className="club-range">
-          <span><small>RANGE MEDIAN</small><strong>{spread.median}</strong></span>
-          <span><small>SPREAD</small><strong>{spread.min}–{spread.max}</strong></span>
-          <span><small>SHOTS</small><strong>{spread.count}</strong></span>
-          {spread.median !== club.carryYds ? (
-            <button type="button" className="club-range-use" onClick={() => commit(spread.median)}>Use {spread.median}</button>
-          ) : (
-            <em className="club-range-match"><CheckCircle size={15} weight="fill" /> In use</em>
-          )}
-        </div>
-      ) : (
-        <p className="club-editor-note">Hit it in a range session and the median of your shots is one tap away.</p>
-      )}
-
       <button
         type="button"
         className="club-remove"
         disabled={!canRemove}
         onClick={() => saveBag(golferId, removeClub(readBag(golferId), club.id))}
       >
-        <Trash size={14} /> Take {club.label.toLowerCase()} out of the bag
+        <Trash size={15} /> Remove {club.label.toLowerCase()} from the bag
       </button>
     </div>
   );
@@ -303,7 +265,7 @@ function CarryField({ label, value, onCommit }: { label: string; value: number; 
 
 function AddClubs({ bag, onAdd }: { bag: Bag; onAdd: (clubId: string) => void }) {
   const inBag = new Set(bag.clubs.map((club) => club.id));
-  const slotsLeft = Math.max(0, MAX_CLUBS - bag.clubs.length);
+  const slotsLeft = MAX_CLUBS - bag.clubs.length;
   const groups = KIND_GROUPS.map((group) => ({
     ...group,
     options: CLUB_CATALOG.filter((entry) => entry.kind === group.kind && !inBag.has(entry.id)),
@@ -315,26 +277,20 @@ function AddClubs({ bag, onAdd }: { bag: Bag; onAdd: (clubId: string) => void })
     <section className="clubs-add">
       <div className="section-heading tight">
         <h2>Add a club</h2>
-        <span>{slotsLeft} {slotsLeft === 1 ? "SLOT" : "SLOTS"} LEFT</span>
+        <span>{slotsLeft > 0 ? `${slotsLeft} ${slotsLeft === 1 ? "SLOT" : "SLOTS"} LEFT` : slotsLeft === 0 ? "BAG FULL" : "OVER 14"}</span>
       </div>
-      {slotsLeft === 0 ? (
-        <p className="clubs-full">Thirteen clubs and a putter make fourteen, the most the rules allow. Take one out to add another.</p>
-      ) : (
-        <p className="clubs-add-note">New clubs start at a carry scaled to the rest of your bag. Fine-tune it, or hit it at the range.</p>
-      )}
+      <p className={slotsLeft < 0 ? "clubs-full" : "clubs-add-note"}>
+        {slotsLeft < 0
+          ? "That is more than the 14 clubs the rules allow, putter included. Fine for practice; take some out before a round that counts."
+          : "New clubs start at a yardage scaled to the rest of your bag. Tap one after adding it to fine-tune."}
+      </p>
       <div className="add-groups">
         {groups.map((group) => (
           <div className="add-group" key={group.kind}>
             <small>{group.label.toUpperCase()}</small>
             <div className="add-chips">
               {group.options.map((entry) => (
-                <button
-                  key={entry.id}
-                  type="button"
-                  className={`add-chip kind-${entry.kind}`}
-                  disabled={slotsLeft === 0}
-                  onClick={() => onAdd(entry.id)}
-                >
+                <button key={entry.id} type="button" className={`add-chip kind-${entry.kind}`} onClick={() => onAdd(entry.id)}>
                   <Plus size={12} weight="bold" /> {entry.label}
                 </button>
               ))}
@@ -358,7 +314,7 @@ function ResetBag({ golferId }: { golferId: string }) {
   }
   return (
     <div className="clubs-reset confirming" role="group" aria-label="Reset the bag">
-      <p>Go back to the standard thirteen clubs at average carries? Range shots for those clubs are kept.</p>
+      <p>Go back to the standard thirteen clubs at average yardages?</p>
       <div>
         <button type="button" onClick={() => { resetBag(golferId); setConfirming(false); }}>Reset bag</button>
         <button type="button" onClick={() => setConfirming(false)}>Keep my bag</button>

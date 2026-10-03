@@ -73,7 +73,7 @@ export function BagEditor({ bag, golferId }: { bag: Bag; golferId: string | null
         <Link className="optional-stat-row caddy-bag-link" href="/clubs">
           <span>
             <strong>Whole bag</strong>
-            <small>Add or remove clubs, log range shots</small>
+            <small>Add or remove clubs, set every yardage</small>
           </span>
           <ArrowRight size={16} />
         </Link>

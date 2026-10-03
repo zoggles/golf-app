@@ -7,21 +7,16 @@ import {
   clubsByLoft,
   DEFAULT_BAG,
   isNewerBag,
-  logShot,
   longestCarry,
   longestClubWithin,
   MAX_CARRY_YDS,
   MAX_CLUBS,
-  MAX_SHOTS_PER_CLUB,
   MIN_CARRY_YDS,
   normalizeBag,
   pickClub,
   removeClub,
-  removeShot,
   setCarry,
   shortestCarry,
-  shotsSince,
-  shotSpread,
   stepDown,
   suggestCarry,
   type Bag,
@@ -181,12 +176,10 @@ describe("adding and removing clubs", () => {
     expect(suggestCarry(long, fourIron)).toBe(191);
   });
 
-  it("stops at thirteen clubs, since the putter makes fourteen", () => {
+  it("adds a club even past the fourteen-club limit, which is only a warning", () => {
     expect(DEFAULT_BAG.clubs).toHaveLength(MAX_CLUBS);
-    expect(addClub(DEFAULT_BAG, "4i")).toBe(DEFAULT_BAG);
-    const roomy = removeClub(DEFAULT_BAG, "lw");
-    const added = addClub(roomy, "4i");
-    expect(added.clubs).toHaveLength(MAX_CLUBS);
+    const added = addClub(DEFAULT_BAG, "4i");
+    expect(added.clubs).toHaveLength(MAX_CLUBS + 1);
     expect(club(added, "4i").label).toBe("4 iron");
   });
 
@@ -204,34 +197,6 @@ describe("adding and removing clubs", () => {
   it("clamps a typed carry", () => {
     expect(club(setCarry(DEFAULT_BAG, "7i", 2), "7i").carryYds).toBe(MIN_CARRY_YDS);
     expect(club(setCarry(DEFAULT_BAG, "7i", 151.6), "7i").carryYds).toBe(152);
-  });
-});
-
-describe("range shots", () => {
-  it("logs, trims and removes shots", () => {
-    let bag = DEFAULT_BAG;
-    for (let index = 0; index < MAX_SHOTS_PER_CLUB + 5; index += 1) {
-      bag = logShot(bag, "7i", 140 + (index % 10), new Date(Date.UTC(2026, 9, 2, 12, 0, index)).toISOString());
-    }
-    const shots = club(bag, "7i").shots!;
-    expect(shots).toHaveLength(MAX_SHOTS_PER_CLUB);
-    expect(shots[0].at).toBe("2026-10-02T12:00:05.000Z");
-
-    const trimmed = removeShot(bag, "7i", shots[0].at);
-    expect(club(trimmed, "7i").shots).toHaveLength(MAX_SHOTS_PER_CLUB - 1);
-    expect(club(trimmed, "8i").shots).toBeUndefined();
-  });
-
-  it("reads a median that one mishit cannot drag down", () => {
-    const shots = [150, 152, 61, 149, 151].map((yds, index) => ({ yds, at: `2026-10-02T12:00:0${index}.000Z` }));
-    expect(shotSpread(shots)).toEqual({ count: 5, median: 150, min: 61, max: 152 });
-    expect(shotSpread([])).toBeNull();
-  });
-
-  it("separates this session from earlier ones", () => {
-    let bag = logShot(DEFAULT_BAG, "pw", 100, "2026-09-28T15:00:00.000Z");
-    bag = logShot(bag, "pw", 108, "2026-10-02T15:00:00.000Z");
-    expect(shotsSince(club(bag, "pw"), "2026-10-02T14:00:00.000Z").map((shot) => shot.yds)).toEqual([108]);
   });
 });
 
@@ -265,7 +230,7 @@ describe("syncing", () => {
   });
 
   it("accepts a bag the app would send and refuses a malformed one", () => {
-    const bag = logShot({ ...DEFAULT_BAG, updatedAt: new Date().toISOString() }, "7i", 150, new Date().toISOString());
+    const bag = { ...setCarry(DEFAULT_BAG, "7i", 150), updatedAt: new Date().toISOString() };
     expect(bagPayloadSchema.safeParse({ bag }).success).toBe(true);
     expect(bagPayloadSchema.safeParse({ bag: { clubs: [], updatedAt: bag.updatedAt } }).success).toBe(false);
     expect(bagPayloadSchema.safeParse({ bag: { clubs: bag.clubs } }).success).toBe(false);
