@@ -15,6 +15,7 @@ const MIRRORS = [
 
 // Overpass asks clients to identify themselves, and anonymous traffic is throttled harder.
 const USER_AGENT = "CaddyStack/1.0 (+https://caddy-stack.vercel.app)";
+const REFERER = "https://caddy-stack.vercel.app/";
 const REQUEST_TIMEOUT_MS = 25_000;
 
 export interface OverpassElement {
@@ -62,10 +63,14 @@ async function requestMirror(endpoint: string, query: string): Promise<OverpassE
   const response = await fetch(endpoint, {
     method: "POST",
     cache: "no-store",
+    // Since 2026 overpass-api.de answers 406 to requests that look scripted, and an Accept of
+    // application/json alone is one of the things it screens on. The query's [out:json] already
+    // picks the format, so accept anything and say where the request comes from.
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       "User-Agent": USER_AGENT,
-      Accept: "application/json",
+      Referer: REFERER,
+      Accept: "*/*",
     },
     // Form-encoded rather than a query string: these bodies outgrow URL length limits.
     body: `data=${encodeURIComponent(query)}`,
