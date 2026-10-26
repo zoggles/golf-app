@@ -21,6 +21,8 @@ export interface FramePoint {
 
 export interface ViewFrame {
   project(point: LatLng): FramePoint;
+  /** The reverse of `project`: where on the ground a point of the drawing is. */
+  unproject(point: FramePoint): LatLng;
   /** Metres covered by one unit of the viewBox, so radii can be drawn to scale. */
   metresPerUnit: number;
   /** Bearing the frame was rotated by, in degrees. */
@@ -91,6 +93,12 @@ export function buildFrame(input: BuildFrameInput): ViewFrame {
         // SVG y grows downward, so up-screen is a subtraction.
         y: VIEW_HEIGHT / 2 - (rotated.y - centreY) / metresPerUnit,
       };
+    },
+    unproject: (point) => {
+      const x = (point.x - VIEW_WIDTH / 2) * metresPerUnit + centreX;
+      const y = (VIEW_HEIGHT / 2 - point.y) * metresPerUnit + centreY;
+      // The transpose of the rotation above, which is its inverse.
+      return projection.toLatLng({ x: x * cos + y * sin, y: -x * sin + y * cos });
     },
   };
 }

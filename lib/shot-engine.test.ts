@@ -9,6 +9,7 @@ import {
   hazardsOnLine,
   isOnGreen,
   planShot,
+  planShotAt,
 } from "./shot-engine";
 
 const TEE: LatLng = { lat: 43.2328, lng: -77.5719 };
@@ -157,6 +158,25 @@ describe("planShot", () => {
     expect(plan.kind).toBe("tee");
     expect(plan.club?.club.id).toBe("driver");
     expect(plan.targetYds).toBeGreaterThan(180);
+  });
+
+  it("does not call a full drive past everything in the bag", () => {
+    // The target is exactly a driver's carry up the hole. Measured back through the globe it
+    // comes out a hair over on some headings, which put a warning under those tee shots.
+    for (const bearing of [0, 37, 90, 145, 260]) {
+      const green = destination(TEE, bearing, yardsToMetres(380));
+      const angled: PlayingHoleGeometry = {
+        ...hole(380),
+        greenCentre: green,
+        greenFront: destination(green, bearing + 180, 12),
+        greenBack: destination(green, bearing, 12),
+        greenPolygon: null,
+        centreline: [TEE, green],
+      };
+      const plan = planShot({ ...base, from: TEE, hole: angled });
+      expect(plan.club?.club.id).toBe("driver");
+      expect(plan.club?.confident).toBe(true);
+    }
   });
 
   it("aims at the centre of the green on an approach and says so", () => {
@@ -373,5 +393,94 @@ describe("big irregular water", () => {
       expect(plan.carries.some((carry) => !carry.carried)).toBe(true);
       expect(plan.reason).toMatch(/\d+/);
     }
+  });
+
+  it("leaves out water well wide of the line", () => {
+    const centre = destination(upTheHole(150), 90, yardsToMetres(110));
+    const outline = [0, 90, 180, 270].map((bearing) => destination(centre, bearing, yardsToMetres(25)));
+    const pond: CourseHazard = { osmId: "way/wide", kind: "water", outline, centre, radiusM: yardsToMetres(25) };
+    expect(hazardsOnLine(TEE, upTheHole(230), [pond])).toEqual([]);
+  });
+});
+
+describe("leave", () => {
+  const base = { bag: DEFAULT_BAG, hazards: [] as CourseHazard[], accuracyM: 5 };
+
+  it("says what a tee shot leaves into the green", () => {
+    const target = hole(400);
+    const plan = planShot({ ...base, from: TEE, hole: target });
+    expect(plan.leave!.yds).toBeCloseTo(metresToYards(haversineM(plan.target, target.greenCentre)), 6);
+    expect(plan.leave!.club).not.toBeNull();
+  });
+
+  it("leaves nothing when the shot is at the green", () => {
+    expect(planShot({ ...base, from: upTheHole(230), hole: hole(380) }).leave).toBeNull();
+  });
+});
+
+describe("planShotAt", () => {
+  const base = { bag: DEFAULT_BAG, hazards: [] as CourseHazard[], accuracyM: 5 };
+  const target = hole(420);
+
+  it("names the club that carries to wherever the target was put", () => {
+    const plan = planShotAt({ ...base, from: TEE, hole: target }, upTheHole(150));
+    expect(plan.custom).toBe(true);
+    expect(plan.targetYds).toBeCloseTo(150, 0);
+    expect(plan.club?.club.id).toBe("6i");
+  });
+
+  it("follows the target as it moves", () => {
+    const short = planShotAt({ ...base, from: TEE, hole: target }, upTheHole(110));
+    const long = planShotAt({ ...base, from: TEE, hole: target }, upTheHole(200));
+    expect(long.club!.club.carryYds).toBeGreaterThan(short.club!.club.carryYds);
+    expect(long.leave!.yds).toBeLessThan(short.leave!.yds);
+    expect(long.rollYds).toBeGreaterThan(short.rollYds);
+  });
+
+  it("says what is left into the green, with a club for it", () => {
+    const plan = planShotAt({ ...base, from: TEE, hole: target }, upTheHole(270));
+    expect(plan.leave!.yds).toBeCloseTo(150, 0);
+    expect(plan.leave!.club?.id).toBe("6i");
+  });
+
+  it("names no club for what is left inside short-game range", () => {
+    const plan = planShotAt({ ...base, from: TEE, hole: target }, upTheHole(395));
+    expect(plan.leave!.yds).toBeLessThan(40);
+    expect(plan.leave!.club).toBeNull();
+  });
+
+  it("leaves a putt when the target is on the green", () => {
+    expect(planShotAt({ ...base, from: upTheHole(250), hole: target }, target.greenCentre).leave).toBeNull();
+  });
+
+  it("aims off the centreline when told to", () => {
+    const wide = destination(upTheHole(200), 90, yardsToMetres(30));
+    const plan = planShotAt({ ...base, from: TEE, hole: target }, wide);
+    expect(plan.bearingDeg).toBeGreaterThan(5);
+    expect(haversineM(plan.target, wide)).toBeLessThan(0.01);
+  });
+
+  it("says the target is in the water rather than moving it", () => {
+    const water = hazardAt(200, yardsToMetres(15));
+    const plan = planShotAt({ ...base, hazards: [water], from: TEE, hole: target }, upTheHole(200));
+    expect(plan.reason).toContain("water");
+    expect(plan.targetYds).toBeCloseTo(200, 0);
+    expect(plan.laidUp).toBe(false);
+  });
+
+  it("says nothing about a target clear of trouble", () => {
+    const water = hazardAt(200, yardsToMetres(15));
+    const plan = planShotAt({ ...base, hazards: [water], from: TEE, hole: target }, upTheHole(150));
+    expect(plan.reason).toBe("");
+  });
+
+  it("marks water the target flies over as carried", () => {
+    const water = hazardAt(120, yardsToMetres(10));
+    const plan = planShotAt({ ...base, hazards: [water], from: TEE, hole: target }, upTheHole(200));
+    expect(plan.carries[0]?.carried).toBe(true);
+  });
+
+  it("owns up when the target is past everything in the bag", () => {
+    expect(planShotAt({ ...base, from: TEE, hole: target }, upTheHole(300)).club?.confident).toBe(false);
   });
 });

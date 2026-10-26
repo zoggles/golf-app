@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildFrame, scaleM, VIEW_HEIGHT, VIEW_WIDTH } from "./caddy-view-frame";
-import { destination, yardsToMetres } from "./geo";
+import { destination, haversineM, yardsToMetres } from "./geo";
 import type { LatLng } from "./hole-geometry";
 
 const PLAYER: LatLng = { lat: 43.2328, lng: -77.5719 };
@@ -84,5 +84,15 @@ describe("buildFrame", () => {
     const left = destination(destination(PLAYER, 0, 100), 270, 30);
     const frame = buildFrame({ player: PLAYER, target: green, green, extra: [left] });
     expect(frame.project(left).x).toBeLessThan(frame.project(PLAYER).x);
+  });
+
+  it("turns a point of the drawing back into the spot on the ground it shows", () => {
+    for (const bearing of [0, 47, 200, 315]) {
+      const green = greenAt(bearing, 220);
+      const frame = buildFrame({ player: PLAYER, target: green, green });
+      for (const point of [PLAYER, green, destination(PLAYER, bearing + 30, 90)]) {
+        expect(haversineM(frame.unproject(frame.project(point)), point)).toBeLessThan(0.01);
+      }
+    }
   });
 });

@@ -385,12 +385,17 @@ a { color: inherit; text-decoration: none; }
 .caddy-head-label, .caddy-signal { display: inline-flex; align-items: center; gap: 5px; font-size: 9px; letter-spacing: .13em; color: var(--faint); }
 .caddy-signal { color: var(--green); }
 .caddy-signal.weak { color: var(--sand); }
-.caddy-map-button { position: relative; display: block; width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.caddy-map-frame { position: relative; }
 /* The CSS box matches the viewBox aspect exactly. Any mismatch letterboxes the drawing
    and wastes the width, which is the one thing a phone has least of. */
 .caddy-view-map { display: block; width: 100%; aspect-ratio: 320 / 400; max-height: 68vh; background: radial-gradient(circle at 50% 84%, rgba(21,40,27,.92), rgba(6,14,9,.96)); }
 .caddy-view-expanded .caddy-view-map { max-height: 88vh; }
-.caddy-expand-hint { position: absolute; right: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: rgba(8,17,12,.72); color: var(--muted); font-size: 10px; }
+.caddy-map-pill { position: absolute; bottom: 10px; display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: rgba(8,17,12,.72); color: var(--muted); font-size: 10px; }
+button.caddy-map-pill { cursor: pointer; }
+.caddy-expand-hint { right: 10px; }
+.caddy-aim-hint, .caddy-aim-reset { left: 10px; }
+.caddy-aim-hint { pointer-events: none; }
+.caddy-aim-reset { border-color: rgba(243,241,232,.32); color: var(--ink); }
 
 .caddy-fairway { fill: none; stroke: rgba(122,176,96,.17); stroke-linecap: round; stroke-linejoin: round; }
 .caddy-hazard { stroke-width: .6; }
@@ -402,6 +407,18 @@ a { color: inherit; text-decoration: none; }
 .caddy-centreline { fill: none; stroke: var(--faint); stroke-width: .8; stroke-dasharray: 3 5; opacity: .5; }
 .caddy-shot-arc { fill: none; stroke: var(--green); stroke-width: 2.6; stroke-linecap: round; }
 .caddy-shot-arc.layup { stroke: var(--sand); }
+.caddy-shot-arc.custom { stroke: var(--ink); }
+.caddy-view-map.aimable { cursor: crosshair; -webkit-user-select: none; user-select: none; }
+.caddy-aim { cursor: grab; touch-action: none; outline: none; }
+.caddy-aim.dragging { cursor: grabbing; }
+.caddy-aim-hit { fill: transparent; pointer-events: all; }
+.caddy-aim-ring { fill: rgba(8,17,12,.42); stroke: var(--ink); stroke-width: 1.6; }
+.caddy-aim:focus-visible .caddy-aim-ring { stroke: var(--green); stroke-width: 2.6; }
+.caddy-aim-dot { fill: var(--ink); }
+.caddy-aim-ghost { fill: none; stroke: var(--green); stroke-width: 1.1; stroke-dasharray: 2 2.4; opacity: .75; }
+.caddy-leave-line { stroke: var(--ink); stroke-width: 1.2; stroke-linecap: round; stroke-dasharray: .5 4; opacity: .6; }
+.caddy-map-label { font-size: 13px; font-weight: 800; fill: var(--ink); paint-order: stroke; stroke: rgba(6,14,9,.9); stroke-width: 4px; stroke-linejoin: round; font-variant-numeric: tabular-nums; pointer-events: none; }
+.caddy-map-label-club { font-size: 10px; font-weight: 700; fill: var(--green); }
 .caddy-shot-roll { fill: none; stroke: var(--green); stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 2 4; opacity: .6; }
 .caddy-dispersion { fill: rgba(173,240,95,.09); stroke: rgba(173,240,95,.3); stroke-width: .7; }
 .caddy-ball { fill: var(--ink); stroke: rgba(8,17,12,.75); stroke-width: .7; }
@@ -527,7 +544,8 @@ html[data-live-round] .page-shell { padding-top: 18px; }
 .live-round .caddy-hole-hint button:last-child { padding: 0 12px; border: 2px solid var(--field-control-edge); background: var(--field-control); color: var(--ink); }
 .live-round .caddy-status { font-size: 13px; }
 .live-round .caddy-status button { min-height: 44px; border: 2px solid var(--field-control-edge); background: var(--field-control); color: var(--ink); font-weight: 700; }
-.live-round .caddy-expand-hint { padding: 7px 11px; border: 1px solid var(--field-control-edge); background: rgba(8,17,12,.86); color: var(--ink); font-size: 12px; }
+.live-round .caddy-map-pill { min-height: 40px; padding: 7px 12px; border: 1px solid var(--field-control-edge); background: rgba(8,17,12,.86); color: var(--ink); font-size: 12px; }
+.live-round .caddy-aim-hint { color: var(--field-label); }
 .live-round .caddy-attribution { color: var(--field-label); }
 .live-round .caddy-obstacles small { color: var(--field-label); font-size: 11px; font-weight: 700; }
 .live-round .caddy-obstacles li { font-size: 16px; }

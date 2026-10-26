@@ -63,6 +63,13 @@ export interface HazardCarry {
   carried: boolean;
 }
 
+/** The shot after this one, from the target into the middle of the green. */
+export interface ShotLeave {
+  yds: number;
+  /** Null inside short-game range, where no full club is named. */
+  club: Club | null;
+}
+
 export interface ShotPlan {
   kind: ShotKind;
   target: LatLng;
@@ -80,8 +87,12 @@ export interface ShotPlan {
   rollYds: number;
   green: GreenDistances;
   onGreen: boolean;
-  /** Plain-language reason for the target, shown under the club. */
+  /** Plain-language reason for the target, shown under the club. Empty when there is none. */
   reason: string;
+  /** Null when the target is on the green, so the next shot is a putt. */
+  leave: ShotLeave | null;
+  /** True when the golfer moved the target on the map rather than taking the caddy's. */
+  custom: boolean;
 }
 
 export function greenDistances(from: LatLng, hole: PlayingHoleGeometry): GreenDistances {
@@ -154,10 +165,16 @@ function hazardExtentM(
     return { nearM: nearest.alongM - hazard.radiusM, farM: nearest.alongM + hazard.radiusM };
   }
 
-  // A closed ring, so the edge nearest a sample is measured rather than only the vertices.
-  const ring = [...hazard.outline, hazard.outline[0]];
   const bearing = bearingDeg(from, to);
   const reach = shotM * LOOK_BEYOND_TARGET;
+  // Every vertex sits within the radius of the centre, so a line that clears that circle by
+  // more than the corridor cannot touch the outline. Skipping those keeps a dragged target
+  // from walking every pond and bunker on the course on each frame.
+  const clearance = nearestPointOnPath([from, destination(from, bearing, reach)], hazard.centre);
+  if (clearance.distanceM - hazard.radiusM > corridorM) return null;
+
+  // A closed ring, so the edge nearest a sample is measured rather than only the vertices.
+  const ring = [...hazard.outline, hazard.outline[0]];
 
   let nearM = Infinity;
   let farM = -Infinity;
@@ -344,6 +361,63 @@ function hazardLabel(hazard: CourseHazard): string {
   return "water";
 }
 
+function leaveFor(target: LatLng, hole: PlayingHoleGeometry, bag: Bag): ShotLeave | null {
+  if (isOnGreen(target, hole)) return null;
+  const yds = metresToYards(haversineM(target, hole.greenCentre));
+  return { yds, club: yds > SHORT_GAME_YDS ? (pickClub(bag, yds)?.club ?? null) : null };
+}
+
+/** The mapped hazard a point sits in, if any. */
+function hazardAtPoint(point: LatLng, hazards: CourseHazard[]): CourseHazard | null {
+  return (
+    hazards.find((hazard) =>
+      hazard.outline.length >= 3
+        ? pointInPolygon(point, hazard.outline)
+        : haversineM(point, hazard.centre) <= hazard.radiusM,
+    ) ?? null
+  );
+}
+
+function landingWarning(hazard: CourseHazard): string {
+  if (hazard.kind === "bunker") return "That lands in a bunker.";
+  if (hazard.kind === "out_of_bounds") return "That lands out of bounds.";
+  return "That lands in the water.";
+}
+
+/**
+ * The shot to a target the golfer put on the map themselves.
+ *
+ * Nothing is second-guessed: the club is whatever carries closest to the point, and a target
+ * in the water is said to be in the water rather than quietly pulled short of it. The caddy's
+ * own pick is still a tap away, so this only has to be honest about the choice made.
+ */
+export function planShotAt(input: PlanShotInput, aim: LatLng): ShotPlan {
+  const { from, hole, bag, hazards, accuracyM } = input;
+  const context = classifyShot(from, hole, longestCarry(bag));
+  const targetYds = metresToYards(haversineM(from, aim));
+  const pick = context.onGreen ? null : pickClub(bag, targetYds);
+  const club = pick?.club ?? null;
+  const landsIn = hazardAtPoint(aim, hazards);
+
+  return {
+    kind: context.kind,
+    target: aim,
+    targetYds,
+    club: pick,
+    bearingDeg: haversineM(from, aim) > 1 ? bearingDeg(from, aim) : bearingDeg(from, hole.greenCentre),
+    carries: hazardsOnLine(from, aim, hazards).map((carry) => ({ ...carry, carried: targetYds > carry.farEdgeYds })),
+    laidUp: false,
+    recovering: false,
+    dispersion: dispersionFor(club, bag, targetYds, accuracyM),
+    rollYds: rollYardsFor(club, bag, context.kind),
+    green: greenDistances(from, hole),
+    onGreen: context.onGreen,
+    reason: landsIn ? landingWarning(landsIn) : "",
+    leave: leaveFor(aim, hole, bag),
+    custom: true,
+  };
+}
+
 export function planShot(input: PlanShotInput): ShotPlan {
   const { from, hole, bag, hazards, accuracyM } = input;
   const context = classifyShot(from, hole, longestCarry(bag));
@@ -360,7 +434,7 @@ export function planShot(input: PlanShotInput): ShotPlan {
       : onLine;
 
   const pick = choice.club
-    ? { club: choice.club, deltaYds: Math.round(choice.club.carryYds - targetYds), confident: targetYds <= longestCarry(bag), alternative: stepDown(bag, choice.club) }
+    ? { club: choice.club, deltaYds: Math.round(choice.club.carryYds - targetYds), confident: Math.round(targetYds) <= longestCarry(bag), alternative: stepDown(bag, choice.club) }
     : null;
 
   return {
@@ -377,6 +451,8 @@ export function planShot(input: PlanShotInput): ShotPlan {
     green: greenDistances(from, hole),
     onGreen: context.onGreen,
     reason: choice.reason,
+    leave: leaveFor(choice.target, hole, bag),
+    custom: false,
   };
 }
 

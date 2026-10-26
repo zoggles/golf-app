@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowCounterClockwise,
   ArrowsOutSimple,
   CrosshairSimple,
+  HandPointing,
   MapPinSimple,
   Path,
   Spinner,
@@ -20,11 +22,11 @@ import { usePlayerPosition } from "@/hooks/use-player-position";
 import { useCaddyViewPrefs } from "@/hooks/use-caddy-view-prefs";
 import { captureGreen, ensureCourseGeometry, refreshCourseGeometry } from "@/lib/course-geometry-cache";
 import { courseKey } from "@/lib/course-key";
-import { metresToYards } from "@/lib/geo";
-import { playingHole, playingHoles } from "@/lib/hole-geometry";
+import { haversineM, metresToYards } from "@/lib/geo";
+import { playingHole, playingHoles, type CourseHazard, type LatLng, type TreeArea } from "@/lib/hole-geometry";
 import { obstaclesAhead, obstaclesForShot, waterAdvice } from "@/lib/hole-obstacles";
 import { setCaddyViewPrefs } from "@/lib/caddy-view-prefs";
-import { detectHole, planShot } from "@/lib/shot-engine";
+import { detectHole, planShot, planShotAt, type ShotPlan } from "@/lib/shot-engine";
 import type { Course, Hole } from "@/lib/types";
 
 /**
@@ -39,6 +41,26 @@ import type { Course, Hole } from "@/lib/types";
 const WEAK_FIX_M = 25;
 /** Android's approximate-location grant lands in the hundreds of metres. Useless here. */
 const COARSE_FIX_M = 150;
+/** Walk this far from where a target was set and that shot has been played. */
+const AIM_RESET_M = 25;
+
+const NO_HAZARDS: CourseHazard[] = [];
+const NO_TREES: TreeArea[] = [];
+
+/** A target the golfer put on the map in place of the caddy's. */
+interface Aim {
+  hole: number;
+  point: LatLng;
+  /** Where the golfer stood when they set it. */
+  from: LatLng;
+}
+
+/** "Leaves 148 in: 7 iron." — the shot after this one, when there is one. */
+function leaveLine(plan: ShotPlan): string | null {
+  if (!plan.leave) return null;
+  const yds = Math.round(plan.leave.yds);
+  return plan.leave.club ? `Leaves ${yds} in: ${plan.leave.club.label.toLowerCase()}.` : `Leaves ${yds} in.`;
+}
 
 interface CaddyViewProps {
   hole: Hole;
@@ -60,8 +82,15 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
   // Tracked by hole number rather than a flag that an effect has to reset: dismissing the
   // hint on one hole should not silence it on the next.
   const [hintDismissedFor, setHintDismissedFor] = useState<number | null>(null);
+  const [aim, setAim] = useState<Aim | null>(null);
 
   const fix = position.state === "tracking" ? position.fix : null;
+  const lat = fix?.lat;
+  const lng = fix?.lng;
+  const accuracyM = fix?.accuracyM;
+  // One object per position rather than per render, so the map redraws when you move and
+  // not every time a fix arrives saying you have not.
+  const player = useMemo(() => (lat !== undefined && lng !== undefined ? { lat, lng } : null), [lat, lng]);
 
   // The map downloads as soon as Caddy View opens. That needs no position, only the course.
   useEffect(() => {
@@ -84,22 +113,45 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
     });
   }, [fix, key, course.holes]);
 
-  const holeGeometry = geometry.bundle ? playingHole(geometry.bundle, hole.number) : null;
-  const hazards = geometry.bundle?.geometry.hazards ?? [];
-  const trees = geometry.bundle?.geometry.trees ?? [];
-  const plan =
-    holeGeometry && fix
-      ? planShot({
-          from: { lat: fix.lat, lng: fix.lng },
-          hole: holeGeometry,
-          hazards,
-          bag,
-          accuracyM: fix.accuracyM,
-        })
-      : null;
+  const holeGeometry = useMemo(
+    () => (geometry.bundle ? playingHole(geometry.bundle, hole.number) : null),
+    [geometry.bundle, hole.number],
+  );
+  const hazards = geometry.bundle?.geometry.hazards ?? NO_HAZARDS;
+  const trees = geometry.bundle?.geometry.trees ?? NO_TREES;
+
+  // The caddy's own shot. It also frames the map, so the view holds still while a target
+  // is dragged around it.
+  const recommended = useMemo(
+    () =>
+      holeGeometry && player && accuracyM !== undefined
+        ? planShot({ from: player, hole: holeGeometry, hazards, bag, accuracyM })
+        : null,
+    [holeGeometry, player, hazards, bag, accuracyM],
+  );
+
+  // Read through rather than cleared by an effect: a target set on another hole, or before
+  // the last shot was hit, simply stops applying.
+  const aimPoint =
+    aim && player && aim.hole === hole.number && haversineM(player, aim.from) <= AIM_RESET_M ? aim.point : null;
+
+  const plan = useMemo(
+    () =>
+      recommended && !recommended.onGreen && aimPoint && holeGeometry && player && accuracyM !== undefined
+        ? planShotAt({ from: player, hole: holeGeometry, hazards, bag, accuracyM }, aimPoint)
+        : recommended,
+    [recommended, aimPoint, holeGeometry, player, hazards, bag, accuracyM],
+  );
+
+  // Every mapped edge on the course, measured from where you stand. Kept apart from the
+  // target so dragging it does not walk them all again on every frame.
+  const ahead = useMemo(
+    () => (holeGeometry && player ? obstaclesAhead({ from: player, hole: holeGeometry, hazards, trees }) : []),
+    [holeGeometry, player, hazards, trees],
+  );
   const obstacles =
-    holeGeometry && fix && plan && !plan.onGreen
-      ? obstaclesForShot(obstaclesAhead({ from: { lat: fix.lat, lng: fix.lng }, hole: holeGeometry, hazards, trees }), {
+    plan && !plan.onGreen
+      ? obstaclesForShot(ahead, {
           targetYds: plan.targetYds,
           longYds: plan.dispersion.longYds,
           rollYds: plan.rollYds,
@@ -107,9 +159,9 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
       : [];
   // A lay-up already says what it is laying up short of, so it gets no second line.
   const advice =
-    fix && plan && !plan.onGreen && !plan.laidUp
+    player && plan && !plan.onGreen && !plan.laidUp
       ? waterAdvice({
-          from: { lat: fix.lat, lng: fix.lng },
+          from: player,
           target: plan.target,
           targetYds: plan.targetYds,
           rollYds: plan.rollYds,
@@ -117,6 +169,10 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
           hazards,
         })
       : null;
+
+  function aimAt(point: LatLng) {
+    if (player) setAim({ hole: hole.number, point, from: player });
+  }
 
   const suggestedHole =
     fix && geometry.bundle && prefs.autoHoleHint && hintDismissedFor !== hole.number
@@ -259,7 +315,7 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
 
   // Geometry has arrived but the first fix has not. The hole still draws, so most of the
   // value is on screen before GPS settles.
-  if (!fix || !plan || !holeGeometry) {
+  if (!fix || !player || !plan || !recommended || !holeGeometry) {
     return shell(
       <>
         {statusRow(
@@ -285,6 +341,8 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
               green: { frontYds: 0, centreYds: 0, backYds: 0 },
               onGreen: false,
               reason: "",
+              leave: null,
+              custom: false,
             }}
             player={holeGeometry.tee}
             accuracyM={0}
@@ -304,7 +362,7 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
     <>
       <div className="caddy-readout">
         <div>
-          <small>{plan.onGreen ? "ON THE GREEN" : plan.laidUp ? "LAY UP" : "PLAY"}</small>
+          <small>{plan.onGreen ? "ON THE GREEN" : plan.custom ? "YOUR TARGET" : plan.laidUp ? "LAY UP" : "PLAY"}</small>
           <strong>
             {plan.club ? plan.club.club.label : plan.onGreen ? `${Math.round(plan.green.centreYds * 3)} ft` : "—"}
           </strong>
@@ -312,7 +370,9 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
         <p>
           {plan.onGreen
             ? "Putting from here. Distances are to the middle of the green."
-            : `${Math.round(plan.targetYds)}${band} yards to your target. ${plan.reason}${advice ? ` ${advice}` : ""}`}
+            : [`${Math.round(plan.targetYds)}${band} yards to your target.`, plan.reason, leaveLine(plan), advice]
+                .filter(Boolean)
+                .join(" ")}
         </p>
       </div>
 
@@ -357,36 +417,49 @@ export function CaddyView({ hole, course, golferId, onDisable, onSelectHole }: C
         statusRow(
           "warn",
           <Warning size={15} weight="fill" />,
-          "That is past everything in your bag. Set your carries under My clubs.",
+          plan.custom
+            ? "That is past everything in your bag."
+            : "That is past everything in your bag. Set your carries under My clubs.",
         )
       ) : null}
 
-      <button
-        type="button"
-        className="caddy-map-button"
-        onClick={() => setExpanded((value) => !value)}
-        aria-label={expanded ? "Shrink the hole map" : "Expand the hole map"}
-      >
+      <div className="caddy-map-frame">
         <CaddyMap
           // A new hole or a change of shot is a new picture, so the reveal plays again.
-          // A GPS tick alone is not, which is why accuracy and position are not in the key.
-          key={`${hole.number}-${plan.kind}-${expanded}`}
+          // A GPS tick or a dragged target is not, which is why neither is in the key.
+          key={`${hole.number}-${recommended.kind}-${expanded}`}
           hole={holeGeometry}
           plan={plan}
-          player={{ lat: fix.lat, lng: fix.lng }}
+          framing={recommended}
+          player={player}
           accuracyM={fix.accuracyM}
           hazards={hazards}
           trees={trees}
+          onAim={plan.onGreen ? undefined : aimAt}
         />
-        <span className="caddy-expand-hint">
+        {plan.custom ? (
+          <button type="button" className="caddy-map-pill caddy-aim-reset" onClick={() => setAim(null)}>
+            <ArrowCounterClockwise size={13} weight="bold" /> Reset target
+          </button>
+        ) : plan.onGreen ? null : (
+          <span className="caddy-map-pill caddy-aim-hint" aria-hidden="true">
+            <HandPointing size={13} weight="bold" /> Drag to aim
+          </span>
+        )}
+        <button
+          type="button"
+          className="caddy-map-pill caddy-expand-hint"
+          onClick={() => setExpanded((value) => !value)}
+          aria-label={expanded ? "Shrink the hole map" : "Expand the hole map"}
+        >
           {expanded ? <X size={13} weight="bold" /> : <ArrowsOutSimple size={13} weight="bold" />}
           {expanded ? "Shrink" : "Expand"}
-        </span>
-      </button>
+        </button>
+      </div>
 
       <p className="caddy-attribution">
         Hole map and hazards: {geometry.bundle?.geometry.attribution}. Not every tree or bunker
-        is mapped. Aiming at the centre of the green, not the pin.
+        is mapped. The caddy aims at the centre of the green, not the pin.
       </p>
       <button
         type="button"

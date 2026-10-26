@@ -234,7 +234,8 @@ export function pickClub(bag: Bag, distanceYds: number): ClubPick | null {
   return {
     club,
     deltaYds: Math.round(club.carryYds - distanceYds),
-    confident: distanceYds <= longestCarry(bag),
+    // Judged on the yardage the golfer is shown, so 230.0001 is not past a 230 yard driver.
+    confident: Math.round(distanceYds) <= longestCarry(bag),
     alternative: ranked[1] ?? null,
   };
 }
