@@ -35,21 +35,29 @@ export function formatToPar(value: number): string {
   return value > 0 ? `+${value}` : String(value);
 }
 
+/** How many of a golfer's latest rounds the index looks at, as an official index does. */
+export const HANDICAP_WINDOW = 20;
+
+/**
+ * An informal handicap index: the best 40% of the score differentials from the golfer's
+ * latest 20 rounds of nine holes or more. Older rounds age out of the window, so the index
+ * follows current form and can rise as well as fall.
+ */
 export function estimateHandicap(rounds: GolfRound[]): number | null {
   const completed = rounds
     .filter((round) => round.status === "completed")
-    .map((round) => {
-      const summary = summarizeRound(round);
-      if (summary.holesPlayed < 9) return null;
+    .map((round) => ({ round, summary: summarizeRound(round) }))
+    .filter(({ summary }) => summary.holesPlayed >= 9)
+    .sort((left, right) => new Date(right.summary.date).getTime() - new Date(left.summary.date).getTime())
+    .slice(0, HANDICAP_WINDOW)
+    .map(({ round, summary }) => {
       const course = round.course ?? getCourse(round.courseId);
       const scale = summary.holesPlayed === 9 ? 2 : 1;
       const adjustedScore = summary.total * scale;
       const adjustedRating = course.holes.length === 9 ? course.rating * 2 : course.rating;
       return ((adjustedScore - adjustedRating) * 113) / round.courseSlope;
     })
-    .filter((value): value is number => value != null)
-    .sort((a, b) => a - b)
-    .slice(0, 20);
+    .sort((a, b) => a - b);
   if (completed.length === 0) return null;
   const count = Math.max(1, Math.ceil(completed.length * 0.4));
   const best = completed.slice(0, count);

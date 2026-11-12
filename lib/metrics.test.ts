@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GENESEE_VALLEY_SOUTH } from "./courses";
-import { buildRoundInsights, estimateRoundHandicap, handicapStrokesForHole, holeMetricsByNumber, trackedRoundMetrics } from "./metrics";
+import { buildRoundInsights, estimateHandicap, estimateRoundHandicap, handicapStrokesForHole, holeMetricsByNumber, trackedRoundMetrics } from "./metrics";
 import type { GolfRound } from "./types";
 
 function trackedRound(id: string, putts: number, fairway: "hit" | "miss", penaltyStrokes: number): GolfRound {
@@ -21,6 +21,49 @@ function trackedRound(id: string, putts: number, fairway: "hit" | "miss", penalt
     events: [{ id: `${id}-event`, at: "2026-09-08T15:00:00.000Z", source: "manual", text: "stats", hole: 1, metrics: { putts, fairway, penaltyStrokes, blowUp: false } }],
   };
 }
+
+/** An eighteen at Genesee Valley South, `day` days into 2026, every hole scored the same. */
+function playedRound(id: string, day: number, strokesPerHole: number): GolfRound {
+  const at = new Date(Date.UTC(2026, 0, 1) + day * 86_400_000).toISOString();
+  return {
+    ...trackedRound(id, 2, "hit", 0),
+    segment: "full18",
+    startedAt: at,
+    completedAt: at,
+    scores: Object.fromEntries(GENESEE_VALLEY_SOUTH.holes.map((hole) => [hole.number, strokesPerHole])),
+    events: [],
+  };
+}
+
+const rounds = (prefix: string, count: number, firstDay: number, strokesPerHole: number) =>
+  Array.from({ length: count }, (_, index) => playedRound(`${prefix}-${index}`, firstDay + index, strokesPerHole));
+
+describe("handicap index", () => {
+  // Rating 65.2 and slope 109: a 90 is a 25.7 differential and a 72 is a 7.0.
+  it("averages the best 40% of the differentials", () => {
+    expect(estimateHandicap(rounds("ninety", 5, 0, 5))).toBe(25.7);
+    expect(estimateHandicap([...rounds("ninety", 4, 0, 5), playedRound("seventy-two", 10, 4)])).toBe(16.4);
+  });
+
+  it("looks only at the latest 20 rounds, however they are ordered", () => {
+    const recent = rounds("recent", 20, 100, 5);
+    const oldBest = playedRound("old-best", 0, 4);
+    expect(estimateHandicap([...recent, oldBest])).toBe(25.7);
+  });
+
+  it("rises when recent rounds are worse than old ones", () => {
+    const sharpYear = rounds("sharp", 20, 0, 4);
+    expect(estimateHandicap(sharpYear)).toBe(7);
+    expect(estimateHandicap([...sharpYear, ...rounds("rusty", 20, 200, 5)])).toBe(25.7);
+  });
+
+  it("skips rounds shorter than nine holes and unfinished rounds", () => {
+    const short = { ...playedRound("short", 300, 4), scores: { 1: 4, 2: 4 } };
+    const unfinished = { ...playedRound("unfinished", 301, 4), status: "active" as const };
+    expect(estimateHandicap([...rounds("ninety", 5, 0, 5), short, unfinished])).toBe(25.7);
+    expect(estimateHandicap([short])).toBeNull();
+  });
+});
 
 describe("round handicap", () => {
   it("adjusts a handicap index for the course, tee, and round length", () => {
