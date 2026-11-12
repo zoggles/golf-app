@@ -143,6 +143,16 @@ describe("buildHistoryCsv", () => {
     expect(Number(cells[0][netColumn])).toBe(6 - Number(cells[0][givenColumn]));
   });
 
+  it("uses the index it is handed when a season goes out on its own", () => {
+    const columns = rows(buildHistoryCsv([round()], GOLFER))[0].split(",");
+    // The embedded comma in the location shifts every later column by one.
+    const handicapColumn = columns.indexOf("round_handicap") + 1;
+    const roundHandicap = (index: number | null) => rows(buildHistoryCsv([round()], GOLFER, index))[1].split(",")[handicapColumn];
+
+    expect(roundHandicap(null)).toBe("");
+    expect(Number(roundHandicap(20))).toBeGreaterThan(Number(roundHandicap(5)));
+  });
+
   it("exports only the holes belonging to the round's segment", () => {
     const eighteen = course({
       holes: Array.from({ length: 18 }, (_, index) => ({
@@ -179,6 +189,10 @@ describe("buildHistoryCsv", () => {
 describe("historyExportFilename", () => {
   it("stamps the file with the day it was exported", () => {
     expect(historyExportFilename(GOLFER, new Date(2026, 8, 8))).toBe("caddy-stack-nell-ray-history-2026-09-08.csv");
+  });
+
+  it("names the season when only one goes out", () => {
+    expect(historyExportFilename(GOLFER, new Date(2027, 0, 3), 2026)).toBe("caddy-stack-nell-ray-2026-season-2027-01-03.csv");
   });
 
   it("still names a file when the golfer's name has nothing to slug", () => {

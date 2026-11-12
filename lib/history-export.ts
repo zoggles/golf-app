@@ -12,8 +12,10 @@ import type { GolfRound } from "./types";
  * and it keeps every number the app holds about a shot-by-shot history: par,
  * yardage, stroke index, and the gross and net score against them.
  *
- * Handicap columns use the index estimated from the whole history, the same one
- * the progress page shows, so a re-export after more rounds restates them.
+ * Handicap columns use the index the progress page shows: by default the one
+ * estimated from the rounds exported, or the one passed in when a single season
+ * goes out with the index carried through it. A re-export after more rounds
+ * restates them.
  */
 
 const COLUMNS = [
@@ -69,13 +71,16 @@ function playedOn(round: GolfRound): string {
   return dateInputValue(new Date(playedAt(round)));
 }
 
-/** Every round the app holds for one golfer, oldest first, one row per hole. */
-export function buildHistoryCsv(rounds: GolfRound[], golferName: string): string {
+/** The rounds given for one golfer, oldest first, one row per hole. */
+export function buildHistoryCsv(
+  rounds: GolfRound[],
+  golferName: string,
+  handicapIndex: number | null = estimateHandicap(rounds),
+): string {
   // Two rounds on the same day keep the order they were played in.
   const ordered = [...rounds].sort(
     (left, right) => new Date(playedAt(left)).getTime() - new Date(playedAt(right)).getTime(),
   );
-  const handicapIndex = estimateHandicap(rounds);
   const rows: string[] = [COLUMNS.join(",")];
 
   for (const round of ordered) {
@@ -136,12 +141,13 @@ export function buildHistoryCsv(rounds: GolfRound[], golferName: string): string
   return `${rows.join("\r\n")}\r\n`;
 }
 
-export function historyExportFilename(golferName: string, now: Date): string {
+export function historyExportFilename(golferName: string, now: Date, season: number | null = null): string {
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const golfer = golferName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  // Two golfers exporting on the same day should not produce the same file.
-  return `caddy-stack-${golfer || "golfer"}-history-${date}.csv`;
+  // Two golfers exporting on the same day should not produce the same file,
+  // and neither should two seasons.
+  return `caddy-stack-${golfer || "golfer"}-${season == null ? "history" : `${season}-season`}-${date}.csv`;
 }

@@ -195,6 +195,12 @@ a { color: inherit; text-decoration: none; }
 .handicap-copy { display: flex; gap: 14px; padding-left: 28px; border-left: 1px solid var(--line); color: var(--green); }
 .handicap-copy p { margin: 0; color: var(--muted); line-height: 1.5; }
 .handicap-copy p strong { color: var(--ink); display: block; }
+.handicap-copy > svg { flex-shrink: 0; }
+.handicap-copy p strong:is(.under, .over, .even) { margin-bottom: 4px; }
+.handicap-copy p strong.under { color: var(--green); }
+.handicap-copy p strong.over { color: var(--danger); }
+.season-toggle { max-width: 100%; margin-top: 22px; overflow-x: auto; scrollbar-width: none; }
+.season-toggle button { min-width: 64px; }
 .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
 .metric-card { min-width: 0; border: 1px solid var(--line); border-radius: 18px; padding: 18px; background: rgba(15,28,19,.72); display: flex; flex-direction: column; }
 .metric-card > span { color: var(--green); margin-bottom: 18px; }
@@ -891,6 +897,7 @@ html[data-lost-guide] body { overflow: hidden; }
   .round-edit-actions .danger-button { justify-content: center; }
   .lens-toggle { width: 100%; grid-auto-columns: minmax(0, 1fr); }
   .lens-toggle button { padding: 0 6px; }
+  .season-toggle { grid-auto-columns: minmax(64px, 1fr); }
   .scorecard { padding: 16px 12px; }
   .scorecard-table th, .scorecard-table td { padding: 0 2px; font-size: 13px; }
   .hole-detail > div { grid-template-columns: 1fr; gap: 1px; }
